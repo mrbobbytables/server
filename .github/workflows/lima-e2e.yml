@@ -1,9 +1,8 @@
 name: Lima e2e installer and boot verification
 
-# End-to-end installer + boot verification runs on a macOS runner inside a
-# nested-virt Lima VM (the runner has no native KVM, so QEMU boots the real
-# installer and installed image only inside the guest). Runs on PRs that touch
-# the installer/element graph so a broken install or boot is caught before merge.
+# End-to-end installer + boot verification runs on a Linux runner inside a
+# nested-virt Lima VM using QEMU/KVM. Runs on PRs that touch the
+# installer/element graph so a broken install or boot is caught before merge.
 on:
   pull_request:
     paths:
@@ -35,7 +34,7 @@ permissions:
 
 jobs:
   lima-e2e:
-    runs-on: macos-latest
+    runs-on: ubuntu-24.04
     # Build the DDI installer (BuildStream over the network) and boot it twice
     # under QEMU; allow generous headroom and let the job fail loudly.
     timeout-minutes: 240
@@ -51,21 +50,33 @@ jobs:
         with:
           tool: just
 
-      - name: Install Lima and QEMU
-        run: brew install lima qemu
+      - name: Install QEMU and configure KVM
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qqy --no-install-recommends qemu-system-x86 qemu-utils ovmf
+          sudo modprobe kvm || true
+          sudo chown $(whoami) /dev/kvm 2>/dev/null || true
+          sudo chmod 666 /dev/kvm 2>/dev/null || true
+
+      - name: Install Lima
+        run: |
+          LIMA_VERSION="2.2.0"
+          curl -fsSL "https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-${LIMA_VERSION}-Linux-x86_64.tar.gz" | sudo tar -xz -C /usr/local
+          limactl --version
 
       - name: Start Lima VM with nested virtualization
         run: |
           # A fresh instance per run; limactl refuses to start a named VM twice.
           limactl stop --force bluefin-server-e2e || true
+          limactl delete --force bluefin-server-e2e || true
           limactl validate .github/scripts/bluefin-lima-template.yaml
           cp .github/scripts/bluefin-lima-template.yaml ~/bluefin-lima-template.yaml
           limactl create --name bluefin-server-e2e ~/bluefin-lima-template.yaml
-          limactl start bluefin-server-e2e
+          limactl start --tty=false bluefin-server-e2e
 
       - name: Run installer and boot verification
         run: |
           # limactl cp transfers the checkout into the writable guest filesystem,
           # where the whole chain (build + double boot) runs with KVM enabled.
-          limactl cp "$PWD" bluefin-server-e2e:/home/ubuntu/repo
+          limactl cp -r "$PWD" bluefin-server-e2e:/home/ubuntu/repo
           limactl shell bluefin-server-e2e bash -lc 'cd /home/ubuntu/repo && ./.github/scripts/lima-e2e-install-boot.sh'

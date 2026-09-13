@@ -24,6 +24,10 @@ def test_lima_template_schema():
     assert data.get("nestedVirtualization") is True
     assert "nested" not in data, "legacy 'nested' field must not be present"
 
+    # vmType and arch must configure nested-virt QEMU
+    assert data.get("vmType") == "qemu"
+    assert data.get("arch") == "x86_64"
+
     # ssh section must not contain unknown field localShell
     if "ssh" in data:
         assert "localShell" not in data["ssh"]

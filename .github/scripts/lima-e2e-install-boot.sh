@@ -7,7 +7,7 @@
 #   Installed target disk boot (Lima VM) -> multi-user.target / login prompt
 #
 # Runs entirely inside the Lima guest so BuildStream/podman and QEMU share the
-# single nested-virt-enabled VM (the macOS runner has no native KVM).
+# single nested-virt-enabled VM with KVM acceleration.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
