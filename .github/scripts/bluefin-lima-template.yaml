@@ -8,16 +8,18 @@
 # The e2e job copies the repository into the guest and runs
 # .github/scripts/lima-e2e-install-boot.sh there, so every build/boot step
 # (BuildStream, podman, QEMU) shares one nested-virt-enabled VM.
-name: bluefin-server-e2e
+base: [template:_images/ubuntu-24.04]
+
 cpus: 8
-memory: 8GB
-disk: 100G
-nested: enabled
+memory: "8GiB"
+disk: "100GiB"
+
+nestedVirtualization: true
+
 containerd:
   system: false
-  guest: false
-ssh:
-  localShell: true
+  user: false
+
 provision:
   - mode: system
     script: |

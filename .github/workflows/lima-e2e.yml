@@ -58,6 +58,7 @@ jobs:
         run: |
           # A fresh instance per run; limactl refuses to start a named VM twice.
           limactl stop --force bluefin-server-e2e || true
+          limactl validate .github/scripts/bluefin-lima-template.yaml
           cp .github/scripts/bluefin-lima-template.yaml ~/bluefin-lima-template.yaml
           limactl create --name bluefin-server-e2e ~/bluefin-lima-template.yaml
           limactl start bluefin-server-e2e
