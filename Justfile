@@ -528,5 +528,12 @@ install-vm:
     echo "==> KubeStellar Console is ready!"
     echo "==> Access URL (LAN): http://${HOST_IP:-localhost}:8080/"
     echo "==> Access URL (Local): http://localhost:8080/"
+    echo "==> Connect client agent: just setup-kubestellar"
     xdg-open "http://${HOST_IP:-localhost}:8080/" || xdg-open http://localhost:8080/ || true
     wait "$QEMU_PID"
+
+# Setup, configure, and launch kc-agent for KubeStellar Console client connectivity.
+[group('dev')]
+setup-kubestellar ORIGIN="http://localhost:8080":
+    ./files/bin/bluefin-kubestellar --origin "{{ORIGIN}}"
+
