@@ -1,9 +1,10 @@
 kind: manual
 description: |
   Import the Flatcar LTS /usr as the Bluefin Server OS payload base.
-  Extracts ./usr from upstream Flatcar container rootfs, flattens the nested
-  kernel module directory, and strips Flatcar's update and provisioning stack
-  in favor of native Bluefin equivalents (systemd-sysupdate, systemd-creds, Kured).
+  Extracts ./usr from upstream Flatcar container rootfs, strips Flatcar's
+  update and provisioning stack in favor of native Bluefin equivalents
+  (systemd-sysupdate, systemd-creds, Kured), and removes /usr/lib/modules
+  to leave kernel module management exclusively to flatcar-kernel.bst.
 
 (@):
   - include/arch.yml
@@ -33,16 +34,10 @@ config:
       # Extract the complete Flatcar /usr into the element install root.
       tar -xzf flatcar-container.tar.gz -C "%{install-root}" ./usr
 
-      # Flatten Flatcar's nested usr/lib/modules/<kver>/<kver>/ layout.
-      # Upstream Flatcar nests modules under usr/lib/modules/<kver>/<kver>/.
-      # Collapse this into the single-level usr/lib/modules/<kver>/ directory
-      # expected by dracut, depmod, and kmod.
-      KVER="%{flatcar-kver}"
-      if [ -d "%{install-root}/usr/lib/modules/${KVER}/${KVER}" ]; then
-        mv "%{install-root}/usr/lib/modules/${KVER}/${KVER}" "%{install-root}/usr/lib/modules/${KVER}.nested"
-        find "%{install-root}/usr/lib/modules/${KVER}.nested" -mindepth 1 -maxdepth 1 -exec mv -t "%{install-root}/usr/lib/modules/${KVER}" {} +
-        rmdir "%{install-root}/usr/lib/modules/${KVER}.nested"
-      fi
+      # Remove kernel modules; elements/flatcar/flatcar-kernel.bst extracts and owns
+      # /usr/lib/modules/%{flatcar-kver} (uncompressing .ko.xz modules and running depmod)
+      # to prevent filesystem overlap collisions when composed together in os-stack.bst.
+      rm -rf "%{install-root}/usr/lib/modules"
 
       # Remove Flatcar's update and provisioning stack with explicit rm lines.
       # Each removal names its Bluefin replacement. No wildcard sweeps are used

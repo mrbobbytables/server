@@ -3,8 +3,7 @@
 Verifies that the Flatcar /usr base import:
 - Uses kind: manual with prebuilt binaries unstripped (strip-binaries: "").
 - Imports flatcar-container.tar.gz pinned by sha256 via the flatcar: alias.
-- Flattens Flatcar's nested usr/lib/modules/<kver>/<kver>/ layout into a
-  single-level module directory.
+- Removes /usr/lib/modules to avoid filesystem collisions with flatcar-kernel.bst.
 - Explicitly removes Flatcar's update and provisioning stack (update_engine,
   locksmithd, ignition, coreos-cloudinit, flatcar-update, download_sysext,
   ensure-sysext) with individual rm commands documented with their Bluefin replacements.
@@ -147,11 +146,11 @@ def test_flatcar_usr_preserves_bootengine_img() -> None:
             )
 
 
-def test_flatcar_usr_module_flattening_logic() -> None:
-    """Verify script logic flattens nested usr/lib/modules/<kver>/<kver>/."""
+def test_flatcar_usr_removes_modules() -> None:
+    """Verify script logic removes /usr/lib/modules to avoid collision with flatcar-kernel.bst."""
     content = FLATCAR_USR_ELEMENT.read_text(encoding="utf-8")
-    assert "usr/lib/modules/${KVER}/${KVER}" in content or "usr/lib/modules/${kver}/${kver}" in content, (
-        "Script must check for and flatten nested kernel module directory"
+    assert 'rm -rf "%{install-root}/usr/lib/modules"' in content, (
+        "Script must remove /usr/lib/modules to prevent collision with flatcar-kernel.bst"
     )
 
 
@@ -162,7 +161,7 @@ def test_flatcar_usr_contract_execution(tmp_path: Path) -> None:
     1. Removed binaries are absent.
     2. Removed units are absent.
     3. bootengine.img is preserved.
-    4. Module directory is flattened from nested <kver>/<kver>/ to single-level <kver>/.
+    4. Module directory /usr/lib/modules is removed to avoid collision with flatcar-kernel.bst.
     5. Retained files (bash, sshd, systemd, crictl) remain untouched.
     """
     flatcar_yml_data = yaml.safe_load(FLATCAR_YML.read_text(encoding="utf-8"))
@@ -205,11 +204,11 @@ def test_flatcar_usr_contract_execution(tmp_path: Path) -> None:
     bootengine = flatcar_dir / "bootengine.img"
     bootengine.write_bytes(b"mock-bootengine-squashfs")
 
-    # Nested module directory: usr/lib/modules/<kver>/<kver>/
-    nested_mod_dir = usr / "lib" / "modules" / kver / kver
-    (nested_mod_dir / "kernel" / "drivers").mkdir(parents=True)
-    (nested_mod_dir / "kernel" / "drivers" / "driver.ko").write_bytes(b"mock-driver")
-    (nested_mod_dir / "modules.dep").write_text("mock modules.dep", encoding="utf-8")
+    # Module directory: usr/lib/modules/<kver>/
+    mod_dir = usr / "lib" / "modules" / kver
+    (mod_dir / "kernel" / "drivers").mkdir(parents=True)
+    (mod_dir / "kernel" / "drivers" / "driver.ko").write_bytes(b"mock-driver")
+    (mod_dir / "modules.dep").write_text("mock modules.dep", encoding="utf-8")
 
     # Extract script from flatcar-usr.bst and adapt variables
     install_commands = _load_element_data().get("config", {}).get("install-commands", [])
@@ -236,17 +235,9 @@ def test_flatcar_usr_contract_execution(tmp_path: Path) -> None:
         target = install_root / rel_path
         assert not target.exists(), f"Removed unit {rel_path} must be absent from output"
 
-    # 3. Assert module tree is single-level
-    mod_root = usr / "lib" / "modules" / kver
-    assert mod_root.is_dir(), f"Module directory {mod_root} must exist"
-    assert not (mod_root / kver).exists(), (
-        f"Nested module directory {mod_root / kver} must be flattened into single level"
-    )
-    assert (mod_root / "kernel" / "drivers" / "driver.ko").is_file(), (
-        "Modules must be moved to single-level module root"
-    )
-    assert (mod_root / "modules.dep").is_file(), (
-        "Module dependency maps must be moved to single-level module root"
+    # 3. Assert module tree is completely removed to avoid collision with flatcar-kernel.bst
+    assert not (usr / "lib" / "modules").exists(), (
+        "/usr/lib/modules must be removed to avoid collision with flatcar-kernel.bst"
     )
 
     # 4. Assert usr/lib/flatcar/bootengine.img exists in output
