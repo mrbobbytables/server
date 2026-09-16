@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import re
 from pathlib import Path
 
@@ -14,6 +15,7 @@ INSTALLER_ELEMENT = (
 )
 JUSTFILE = REPO_ROOT / "Justfile"
 DDI_ELEMENT = REPO_ROOT / "elements" / "oci" / "bluefin-server-ddi.bst"
+VAR_MOUNT = REPO_ROOT / "files" / "os" / "systemd" / "system" / "var.mount"
 
 
 def _published_uki_cmdline(installer_element: str) -> str:
@@ -135,3 +137,27 @@ def test_installer_and_ddi_strip_vmlinux_and_static_archives() -> None:
     assert "find /layer -type f -name '*.a' -delete" in installer_element
     assert 'rm -f "/layer/usr/lib/modules/${KVER}/vmlinux"' in ddi_element
     assert "find /layer -type f -name '*.a' -delete" in ddi_element
+
+
+def test_var_mount_contracts_use_filesystem_label() -> None:
+    ddi_element = DDI_ELEMENT.read_text(encoding="utf-8")
+    justfile = JUSTFILE.read_text(encoding="utf-8")
+    var_mount = VAR_MOUNT.read_text(encoding="utf-8")
+
+    assert "printf 'LABEL=var /var xfs defaults 0 0\\n' > /layer/etc/fstab" in ddi_element
+    assert "What=/dev/disk/by-label/var" in var_mount
+
+    match = re.search(r"io\.systemd\.credential\.binary:fstab\.extra=([A-Za-z0-9+/=]+)", justfile)
+    assert match, "fstab.extra credential should be defined in Justfile"
+    decoded = base64.b64decode(match.group(1)).decode("utf-8")
+    assert decoded.strip() == "LABEL=var /var xfs defaults 0 0"
+
+
+def test_sh_compatibility_symlinks_configured() -> None:
+    ddi_element = DDI_ELEMENT.read_text(encoding="utf-8")
+    installer_element = INSTALLER_ELEMENT.read_text(encoding="utf-8")
+
+    assert "ln -sf bash /layer/usr/bin/sh" in ddi_element
+    assert "ln -sf bash /layer/usr/bin/sh" in installer_element
+    assert "ln -sf bash /target-root/usr/bin/sh" in installer_element
+

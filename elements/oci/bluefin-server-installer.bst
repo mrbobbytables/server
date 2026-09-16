@@ -79,6 +79,13 @@ config:
         fi
       done
 
+      # Provide /bin/sh -> bash compatibility symlinks
+      mkdir -p /layer/usr/bin /layer/bin /target-root/usr/bin /target-root/bin
+      ln -sf bash /layer/usr/bin/sh
+      [ -e /layer/bin/sh ] || ln -sf /usr/bin/bash /layer/bin/sh
+      ln -sf bash /target-root/usr/bin/sh
+      [ -e /target-root/bin/sh ] || ln -sf /usr/bin/bash /target-root/bin/sh
+
       # systemd-native initrd: /init -> PID 1
       ln -sf usr/lib/systemd/systemd /layer/init
       # Mount points needed by the installer service
