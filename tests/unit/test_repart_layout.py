@@ -180,6 +180,10 @@ def test_root_slot_grows_and_is_bounded_below_the_var_partition():
     assert "SizeMaxBytes" in root, (
         "the root slot must be capped, otherwise /var gets no space on small disks"
     )
+    assert parse_size(root["SizeMaxBytes"]) <= 8 * 1024**3, (
+        "the root slot must be capped at 8G or less so /var is guaranteed at least "
+        "its SizeMinBytes (4G) on standard 16G target disks"
+    )
 
 
 def test_var_is_a_growing_xfs_tail():
