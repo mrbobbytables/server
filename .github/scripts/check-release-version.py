@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Enforce the release-version invariant for Bluefin Server.
 
-project.conf declares the two release version axes:
+The two release version axes are each declared in exactly one place:
 
-    variables:
-      installer-version: "X.Y.Z"   # must match the FSDK point release
-      flatcar-version: "X.Y.Z"     # must match the Flatcar LTS release
+    project.conf        installer-version: "X.Y.Z"  # FSDK point release
+    include/flatcar.yml flatcar-version:   "X.Y.Z"  # Flatcar LTS release
 
 The installer-version axis names the offline installer disk image and PXE boot
 inputs (bluefin-server-installer-<v>.raw.zst, bluefin-server-pxe-*), which
@@ -13,15 +12,17 @@ compose their userspace from freedesktop-sdk.
 
 The flatcar-version axis names the OS payload release assets
 (bluefin-server-ddi-<v>.raw.zst, bluefin-server-<v>.efi) and is the version
-systemd-sysupdate extracts from those filenames via `@v`.
+systemd-sysupdate extracts from those filenames via `@v`. project.conf pulls
+include/flatcar.yml in via its `(@)` list, so %{flatcar-version} resolves
+project-wide without being restated.
 
 The k0s sysext is on its own axis: an independently-pinned third-party
 payload versioned from `include/k0s.yml` and enforced separately by
 `.github/scripts/check-k0s-version.py`.
 
-This script validates both axes independently against their pins:
-  * installer-version against elements/freedesktop-sdk.bst
-  * flatcar-version against include/flatcar.yml
+This script validates both axes against their pins:
+  * project.conf installer-version against elements/freedesktop-sdk.bst
+  * include/flatcar.yml flatcar-version is well-formed
 
 This script fails closed on any drift.
 """
@@ -37,9 +38,6 @@ FLATCAR_PIN = ROOT / "include" / "flatcar.yml"
 
 INSTALLER_VERSION_RE = re.compile(
     r"^\s*installer-version:\s*[\"']?([0-9]+\.[0-9]+\.[0-9]+)[\"']?\s*$", re.MULTILINE
-)
-FLATCAR_VERSION_RE = re.compile(
-    r"^\s*flatcar-version:\s*[\"']?([0-9]+\.[0-9]+\.[0-9]+)[\"']?\s*$", re.MULTILINE
 )
 FSDK_REF_RE = re.compile(r"freedesktop-sdk-([0-9]+\.[0-9]+\.[0-9]+)")
 FLATCAR_PIN_RE = re.compile(
@@ -65,14 +63,6 @@ def main():
             "'installer-version: X.Y.Z' variable."
         )
     installer_declared = installer_match.group(1)
-
-    flatcar_match = FLATCAR_VERSION_RE.search(conf)
-    if not flatcar_match:
-        sys.exit(
-            "ERROR: project.conf does not declare a "
-            "'flatcar-version: X.Y.Z' variable."
-        )
-    flatcar_declared = flatcar_match.group(1)
 
     fsdk_match = FSDK_REF_RE.search(junction)
     if not fsdk_match:
@@ -102,21 +92,9 @@ def main():
             f"Fix: set installer-version to \"{fsdk_pinned}\" in project.conf."
         )
 
-    if flatcar_declared != flatcar_pinned:
-        sys.exit(
-            "ERROR: flatcar-version drift.\n"
-            f"  project.conf flatcar-version          : {flatcar_declared}\n"
-            f"  include/flatcar.yml pinned release    : {flatcar_pinned}\n"
-            "\n"
-            "The OS payload version and systemd-sysupdate assets are derived from\n"
-            "the Flatcar LTS pin while project.conf declares flatcar-version.\n"
-            "\n"
-            f"Fix: set flatcar-version to \"{flatcar_pinned}\" in project.conf."
-        )
-
     print(
         f"OK: installer-version {installer_declared} matches pinned FSDK point release.\n"
-        f"OK: flatcar-version {flatcar_declared} matches pinned Flatcar release."
+        f"OK: flatcar-version {flatcar_pinned} declared in include/flatcar.yml."
     )
 
 

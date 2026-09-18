@@ -1,8 +1,8 @@
 """Unit coverage for .github/scripts/check-release-version.py.
 
-The script is the gate protecting against version drift between ``project.conf``
-and the two release axes: the installer axis pinned in
-``elements/freedesktop-sdk.bst`` and the Flatcar OS payload axis pinned in
+The script is the gate protecting against version drift on the two release
+axes: the installer axis declared in ``project.conf`` and pinned in
+``elements/freedesktop-sdk.bst``, and the Flatcar OS payload axis declared in
 ``include/flatcar.yml``.
 
 When either regresses, CI publishes release assets carrying stale version
@@ -51,13 +51,10 @@ def _write(
     checker,
     installer_declared="26.08.0",
     fsdk_pinned="26.08.0",
-    flatcar_declared="4593.2.5",
     flatcar_pinned="4593.2.5",
 ):
     checker.PROJECT_CONF.write_text(
-        "variables:\n"
-        f'  installer-version: "{installer_declared}"\n'
-        f'  flatcar-version: "{flatcar_declared}"\n',
+        f'variables:\n  installer-version: "{installer_declared}"\n',
         encoding="utf-8",
     )
     checker.FSDK_JUNCTION.write_text(
@@ -127,39 +124,6 @@ def test_installer_version_re_rejects_malformed_declarations(checker, line):
     assert checker.INSTALLER_VERSION_RE.search(f"variables:\n{line}\n") is None
 
 
-# --- FLATCAR_VERSION_RE ---------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "line",
-    [
-        '  flatcar-version: "4593.2.5"',
-        "  flatcar-version: '4593.2.5'",
-        "  flatcar-version: 4593.2.5",
-        "flatcar-version: 4593.2.5",
-        "\tflatcar-version: 4593.2.5",
-        '  flatcar-version: "4593.2.5"  ',
-    ],
-)
-def test_flatcar_version_re_accepts_supported_spellings(checker, line):
-    match = checker.FLATCAR_VERSION_RE.search(f"variables:\n{line}\n")
-    assert match is not None
-    assert match.group(1) == "4593.2.5"
-
-
-@pytest.mark.parametrize(
-    "line",
-    [
-        "  flatcar-version: 4593.2",
-        "  flatcar-version:",
-        "  other-flatcar-version-thing: 1.2.3",
-        "  # flatcar-version: 1.2.3",
-    ],
-)
-def test_flatcar_version_re_rejects_malformed_declarations(checker, line):
-    assert checker.FLATCAR_VERSION_RE.search(f"variables:\n{line}\n") is None
-
-
 # --- FSDK_REF_RE ----------------------------------------------------------
 
 
@@ -194,7 +158,6 @@ def test_main_passes_when_versions_match(checker, capsys):
         checker,
         installer_declared="26.08.0",
         fsdk_pinned="26.08.0",
-        flatcar_declared="4593.2.5",
         flatcar_pinned="4593.2.5",
     )
     checker.main()
@@ -213,7 +176,7 @@ def test_main_exits_when_project_conf_missing(checker):
 
 def test_main_exits_when_junction_missing(checker):
     checker.PROJECT_CONF.write_text(
-        'variables:\n  installer-version: "26.08.0"\n  flatcar-version: "4593.2.5"\n',
+        'variables:\n  installer-version: "26.08.0"\n',
         encoding="utf-8",
     )
     checker.FLATCAR_PIN.write_text('flatcar-version: "4593.2.5"\n', encoding="utf-8")
@@ -224,7 +187,7 @@ def test_main_exits_when_junction_missing(checker):
 
 def test_main_exits_when_flatcar_pin_missing(checker):
     checker.PROJECT_CONF.write_text(
-        'variables:\n  installer-version: "26.08.0"\n  flatcar-version: "4593.2.5"\n',
+        'variables:\n  installer-version: "26.08.0"\n',
         encoding="utf-8",
     )
     checker.FSDK_JUNCTION.write_text("ref: freedesktop-sdk-26.08.0\n", encoding="utf-8")
@@ -234,9 +197,7 @@ def test_main_exits_when_flatcar_pin_missing(checker):
 
 
 def test_main_exits_when_installer_version_not_declared(checker):
-    checker.PROJECT_CONF.write_text(
-        'variables:\n  flatcar-version: "4593.2.5"\n', encoding="utf-8"
-    )
+    checker.PROJECT_CONF.write_text("variables:\n  other: 1\n", encoding="utf-8")
     checker.FSDK_JUNCTION.write_text("ref: freedesktop-sdk-26.08.0\n", encoding="utf-8")
     checker.FLATCAR_PIN.write_text('flatcar-version: "4593.2.5"\n', encoding="utf-8")
     with pytest.raises(SystemExit) as excinfo:
@@ -244,20 +205,9 @@ def test_main_exits_when_installer_version_not_declared(checker):
     assert "does not declare an 'installer-version" in str(excinfo.value)
 
 
-def test_main_exits_when_flatcar_version_not_declared(checker):
-    checker.PROJECT_CONF.write_text(
-        'variables:\n  installer-version: "26.08.0"\n', encoding="utf-8"
-    )
-    checker.FSDK_JUNCTION.write_text("ref: freedesktop-sdk-26.08.0\n", encoding="utf-8")
-    checker.FLATCAR_PIN.write_text('flatcar-version: "4593.2.5"\n', encoding="utf-8")
-    with pytest.raises(SystemExit) as excinfo:
-        checker.main()
-    assert "does not declare a 'flatcar-version" in str(excinfo.value)
-
-
 def test_main_exits_when_junction_has_no_point_release(checker):
     checker.PROJECT_CONF.write_text(
-        'variables:\n  installer-version: "26.08.0"\n  flatcar-version: "4593.2.5"\n',
+        'variables:\n  installer-version: "26.08.0"\n',
         encoding="utf-8",
     )
     checker.FSDK_JUNCTION.write_text(
@@ -271,7 +221,7 @@ def test_main_exits_when_junction_has_no_point_release(checker):
 
 def test_main_exits_when_flatcar_pin_has_no_version(checker):
     checker.PROJECT_CONF.write_text(
-        'variables:\n  installer-version: "26.08.0"\n  flatcar-version: "4593.2.5"\n',
+        'variables:\n  installer-version: "26.08.0"\n',
         encoding="utf-8",
     )
     checker.FSDK_JUNCTION.write_text("ref: freedesktop-sdk-26.08.0\n", encoding="utf-8")
@@ -297,24 +247,6 @@ def test_main_installer_drift_is_detected_across_minor_lines(checker):
     with pytest.raises(SystemExit) as excinfo:
         checker.main()
     assert "installer-version drift" in str(excinfo.value)
-
-
-def test_main_exits_on_flatcar_drift_and_names_both_versions(checker):
-    _write(checker, flatcar_declared="4593.2.5", flatcar_pinned="4593.2.6")
-    with pytest.raises(SystemExit) as excinfo:
-        checker.main()
-    message = str(excinfo.value)
-    assert "flatcar-version drift" in message
-    assert "4593.2.5" in message
-    assert "4593.2.6" in message
-    assert 'set flatcar-version to "4593.2.6"' in message
-
-
-def test_main_flatcar_drift_is_detected_across_minor_lines(checker):
-    _write(checker, flatcar_declared="4593.1.0", flatcar_pinned="4593.2.5")
-    with pytest.raises(SystemExit) as excinfo:
-        checker.main()
-    assert "flatcar-version drift" in str(excinfo.value)
 
 
 # --- live repository invariant -------------------------------------------

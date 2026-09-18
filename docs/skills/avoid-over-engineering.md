@@ -67,8 +67,9 @@ existing repo convention already does the job.
 ## Verification
 
 - [ ] `just validate` passes before and after the change.
-- [ ] No hardcoded version duplicates remain; `installer-version` and `flatcar-version`
-      in `project.conf` define the installer and OS payload axes.
+- [ ] No hardcoded version duplicates remain; `installer-version` in `project.conf`
+      and `flatcar-version` in `include/flatcar.yml` define the installer and OS
+      payload axes.
 - [ ] Removed build dependencies are not used by any command in the element.
 - [ ] For `manual`/`script` elements, the sandbox still has `/bin/sh` and any coreutils the commands need after a dep cut.
 - [ ] For `script` elements, build the element with `just bst build <element>`; transitive tools (`dracut`, `ukify`, etc.) may fail silently if their own runtime deps are missing from the sandbox.
