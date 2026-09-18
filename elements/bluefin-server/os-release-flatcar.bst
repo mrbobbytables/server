@@ -18,8 +18,8 @@ config:
   install-commands:
     - mkdir -p "%{install-root}/usr/lib"
     - |
-      # %{flatcar-version} is declared in project.conf and enforced against
-      # include/flatcar.yml by check-release-version.py — no re-parsing needed.
+      # %{flatcar-version} comes from include/flatcar.yml, the single source of
+      # truth for the Flatcar axis — no re-parsing needed.
       FLATCAR_VERSION="%{flatcar-version}"
 
       cat <<EOF > "%{install-root}/usr/lib/os-release"
