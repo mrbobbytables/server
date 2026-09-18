@@ -47,15 +47,22 @@ config:
 
       # update_engine: replaced by Bluefin's systemd-sysupdate (os-sysupdate.bst) for A/B image updates
       rm "%{install-root}/usr/bin/update_engine"
+      rm "%{install-root}/usr/lib/systemd/system/update-engine.service"
+      rm "%{install-root}/usr/lib/systemd/system/multi-user.target.wants/update-engine.service"
+      rm "%{install-root}/usr/lib/tmpfiles.d/update-engine.conf"
 
       # update_engine_client: replaced by Bluefin's systemd-sysupdate CLI and systemctl
       rm "%{install-root}/usr/bin/update_engine_client"
 
       # update_engine_stub: replaced by Bluefin's native systemd-sysupdate mechanism
       rm "%{install-root}/usr/bin/update_engine_stub"
+      rm "%{install-root}/usr/lib/systemd/system/update-engine-stub.service"
+      rm "%{install-root}/usr/lib/systemd/system/update-engine-stub.timer"
+      rm "%{install-root}/usr/lib/systemd/system/multi-user.target.wants/update-engine-stub.timer"
 
       # locksmithd: replaced by Bluefin's Kured reboot coordination (os-kured-hook.bst) via /run/reboot-required
       rm "%{install-root}/usr/lib/locksmith/locksmithd"
+      rm "%{install-root}/usr/bin/locksmithctl"
 
       # locksmithd.service: replaced by Bluefin's Kured reboot coordination (os-kured-hook.bst)
       rm "%{install-root}/usr/lib/systemd/system/locksmithd.service"
@@ -63,6 +70,7 @@ config:
 
       # ignition: replaced by Bluefin's systemd-creds first-boot credential provisioning (os-creds-prov.bst)
       rm "%{install-root}/usr/bin/ignition"
+      rm "%{install-root}/usr/libexec/ignition-rmcfg"
 
       # ignition-delete-config.service: replaced by Bluefin's systemd-creds credential provisioning
       rm "%{install-root}/usr/lib/systemd/system/ignition-delete-config.service"
@@ -70,9 +78,13 @@ config:
 
       # coreos-cloudinit: replaced by Bluefin's systemd-creds first-boot credential provisioning (os-creds-prov.bst)
       rm "%{install-root}/usr/bin/coreos-cloudinit"
+      rm "%{install-root}/usr/lib/systemd/system/enable-oem-cloudinit.service"
+      rm "%{install-root}/usr/lib/systemd/system/multi-user.target.wants/enable-oem-cloudinit.service"
+      rm "%{install-root}/usr/lib/systemd/system/oem-cloudinit.service"
 
       # flatcar-update: replaced by Bluefin's systemd-sysupdate (os-sysupdate.bst) and os-justfile
       rm "%{install-root}/usr/bin/flatcar-update"
+      rm "%{install-root}/usr/lib/tmpfiles.d/flatcar-update.conf"
 
       # download_sysext: replaced by Bluefin's declarative sysext delivery via systemd-sysext
       rm "%{install-root}/usr/bin/download_sysext"

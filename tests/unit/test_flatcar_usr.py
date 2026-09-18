@@ -28,6 +28,7 @@ REMOVED_BINARIES = [
     "usr/bin/update_engine_client",
     "usr/bin/update_engine_stub",
     "usr/lib/locksmith/locksmithd",
+    "usr/bin/locksmithctl",
     "usr/bin/ignition",
     "usr/bin/coreos-cloudinit",
     "usr/bin/flatcar-update",
@@ -35,16 +36,35 @@ REMOVED_BINARIES = [
 ]
 
 REMOVED_UNITS = [
+    "usr/lib/systemd/system/update-engine.service",
+    "usr/lib/systemd/system/multi-user.target.wants/update-engine.service",
+    "usr/lib/systemd/system/update-engine-stub.service",
+    "usr/lib/systemd/system/update-engine-stub.timer",
+    "usr/lib/systemd/system/multi-user.target.wants/update-engine-stub.timer",
     "usr/lib/systemd/system/locksmithd.service",
+    "usr/lib/systemd/system/multi-user.target.wants/locksmithd.service",
     "usr/lib/systemd/system/ignition-delete-config.service",
+    "usr/lib/systemd/system/sysinit.target.wants/ignition-delete-config.service",
+    "usr/lib/systemd/system/enable-oem-cloudinit.service",
+    "usr/lib/systemd/system/multi-user.target.wants/enable-oem-cloudinit.service",
+    "usr/lib/systemd/system/oem-cloudinit.service",
     "usr/lib/systemd/system/ensure-sysext.service",
+    "usr/lib/systemd/system/sysinit.target.wants/ensure-sysext.service",
+]
+
+REMOVED_EXTRA_FILES = [
+    "usr/lib/tmpfiles.d/update-engine.conf",
+    "usr/lib/tmpfiles.d/flatcar-update.conf",
+    "usr/libexec/ignition-rmcfg",
 ]
 
 REMOVED_COMPONENTS = [
     "update_engine",
     "update_engine_client",
     "update_engine_stub",
+    "update-engine.service",
     "locksmithd",
+    "locksmithctl",
     "locksmithd.service",
     "ignition",
     "ignition-delete-config.service",
@@ -175,8 +195,8 @@ def test_flatcar_usr_contract_execution(tmp_path: Path) -> None:
     bin_dir.mkdir(parents=True)
     for b in [
         "bash", "crictl", "sshd", "update_engine", "update_engine_client",
-        "update_engine_stub", "ignition", "coreos-cloudinit", "flatcar-update",
-        "download_sysext"
+        "update_engine_stub", "locksmithctl", "ignition", "coreos-cloudinit",
+        "flatcar-update", "download_sysext"
     ]:
         (bin_dir / b).write_text(f"mock-{b}", encoding="utf-8")
 
@@ -184,15 +204,32 @@ def test_flatcar_usr_contract_execution(tmp_path: Path) -> None:
     locksmith_dir.mkdir(parents=True)
     (locksmith_dir / "locksmithd").write_text("mock-locksmithd", encoding="utf-8")
 
+    libexec_dir = usr / "libexec"
+    libexec_dir.mkdir(parents=True)
+    (libexec_dir / "ignition-rmcfg").write_text("mock-ignition-rmcfg", encoding="utf-8")
+
+    tmpfiles_dir = usr / "lib" / "tmpfiles.d"
+    tmpfiles_dir.mkdir(parents=True)
+    (tmpfiles_dir / "update-engine.conf").write_text("mock-tmpfiles", encoding="utf-8")
+    (tmpfiles_dir / "flatcar-update.conf").write_text("mock-tmpfiles", encoding="utf-8")
+
     systemd_dir = usr / "lib" / "systemd" / "system"
     systemd_dir.mkdir(parents=True)
+    (systemd_dir / "update-engine.service").write_text("mock-unit", encoding="utf-8")
+    (systemd_dir / "update-engine-stub.service").write_text("mock-unit", encoding="utf-8")
+    (systemd_dir / "update-engine-stub.timer").write_text("mock-unit", encoding="utf-8")
     (systemd_dir / "locksmithd.service").write_text("mock-unit", encoding="utf-8")
     (systemd_dir / "ignition-delete-config.service").write_text("mock-unit", encoding="utf-8")
+    (systemd_dir / "enable-oem-cloudinit.service").write_text("mock-unit", encoding="utf-8")
+    (systemd_dir / "oem-cloudinit.service").write_text("mock-unit", encoding="utf-8")
     (systemd_dir / "ensure-sysext.service").write_text("mock-unit", encoding="utf-8")
 
     wants_dir1 = systemd_dir / "multi-user.target.wants"
     wants_dir1.mkdir(parents=True)
+    (wants_dir1 / "update-engine.service").symlink_to("../update-engine.service")
+    (wants_dir1 / "update-engine-stub.timer").symlink_to("../update-engine-stub.timer")
     (wants_dir1 / "locksmithd.service").symlink_to("../locksmithd.service")
+    (wants_dir1 / "enable-oem-cloudinit.service").symlink_to("../enable-oem-cloudinit.service")
 
     wants_dir2 = systemd_dir / "sysinit.target.wants"
     wants_dir2.mkdir(parents=True)
@@ -230,10 +267,14 @@ def test_flatcar_usr_contract_execution(tmp_path: Path) -> None:
         target = install_root / rel_path
         assert not target.exists(), f"Removed binary {rel_path} must be absent from output"
 
-    # 2. Assert removed units are absent
+    # 2. Assert removed units and extra files are absent
     for rel_path in REMOVED_UNITS:
         target = install_root / rel_path
         assert not target.exists(), f"Removed unit {rel_path} must be absent from output"
+
+    for rel_path in REMOVED_EXTRA_FILES:
+        target = install_root / rel_path
+        assert not target.exists(), f"Removed file {rel_path} must be absent from output"
 
     # 3. Assert module tree is completely removed to avoid collision with flatcar-kernel.bst
     assert not (usr / "lib" / "modules").exists(), (
