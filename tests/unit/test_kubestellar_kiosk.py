@@ -100,6 +100,7 @@ def test_proxy_is_the_only_public_console_endpoint() -> None:
 
     assert "name: kubestellar-kiosk-proxy" in proxy
     assert "hostPort: 8080" in proxy
+    assert "hostIP:" not in proxy
     assert "mountPath: /etc/kubestellar-kiosk" in proxy
     assert "hostPath:\n          path: /var/lib/k0s/kiosk" in proxy
     assert "readOnly: true" in proxy
