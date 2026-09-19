@@ -1,6 +1,11 @@
 """Contracts for the KubeStellar kiosk proxy and authenticated agent gate."""
 
+import json
 from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 KIOSK = ROOT / "files" / "k0s" / "kiosk"
@@ -107,3 +112,134 @@ def test_proxy_is_the_only_public_console_endpoint() -> None:
         "nginx@sha256:62223d644fa234c3a1cc785ee14242ec47a77364226f1c811d2f669f96dc2ac8"
         in proxy
     )
+
+
+def test_kiosk_gate_mitigates_dashboard_rate_limiting() -> None:
+    script = KIOSK_JS.read_text(encoding="utf-8")
+
+    assert "isApiRequest" in script
+    assert "Retry-After" in script
+    assert "429" in script
+    assert "INITIAL_BACKOFF_MS = 500" in script
+    assert "BACKOFF_FACTOR = 2" in script
+    assert "MAX_RETRIES = 4" in script
+    assert "STAGGER_INTERVAL_MS = 75" in script
+    assert "staggerRequest" in script
+    assert "parseRetryAfter" in script
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not found")
+def test_kiosk_gate_fetch_interceptor_behavior() -> None:
+    node_test_script = f"""
+const fs = require('fs');
+const vm = require('vm');
+
+const kioskCode = fs.readFileSync({json.dumps(str(KIOSK_JS))}, 'utf8');
+
+function setupSandbox(mockFetch) {{
+  const sandbox = {{
+    window: {{
+      location: {{ origin: 'http://localhost:8080' }},
+      localStorage: {{ getItem: () => null }},
+      setInterval: () => {{}},
+    }},
+    document: {{
+      getElementById: () => null,
+      addEventListener: () => {{}},
+      body: {{ insertAdjacentHTML: () => {{}} }},
+    }},
+    setTimeout,
+    clearTimeout,
+    Date,
+    URL,
+    DOMException,
+    console,
+  }};
+  sandbox.window.fetch = mockFetch;
+  sandbox.window.window = sandbox.window;
+  vm.runInNewContext(kioskCode, sandbox);
+  return sandbox;
+}}
+
+(async () => {{
+  // 1. Non-API pass through
+  let nonApiCalled = false;
+  const s1 = setupSandbox(async () => {{
+    nonApiCalled = true;
+    return {{ status: 200, ok: true }};
+  }});
+  const res1 = await s1.window.fetch('http://127.0.0.1:8585/health');
+  if (!nonApiCalled || res1.status !== 200) throw new Error('Non-API pass-through failed');
+
+  // 2. 429 retry with Retry-After header
+  let flakyAttempts = 0;
+  const s2 = setupSandbox(async () => {{
+    flakyAttempts++;
+    if (flakyAttempts <= 2) {{
+      return {{
+        status: 429,
+        headers: {{ get: (k) => k.toLowerCase() === 'retry-after' ? '0.05' : null }}
+      }};
+    }}
+    return {{ status: 200, ok: true, data: 'hydrated' }};
+  }});
+  const res2 = await s2.window.fetch('/api/mcp/clusters');
+  if (res2.status !== 200 || flakyAttempts !== 3) {{
+    throw new Error(`Expected 3 attempts and 200 OK, got ${{flakyAttempts}} attempts and status ${{res2.status}}`);
+  }}
+
+  // 3. Staggering burst requests
+  const start = Date.now();
+  const dispatchTimes = [];
+  const s3 = setupSandbox(async () => {{
+    dispatchTimes.push(Date.now() - start);
+    return {{ status: 200, ok: true }};
+  }});
+  await Promise.all([
+    s3.window.fetch('/api/mcp/clusters'),
+    s3.window.fetch('/api/mcp/services'),
+    s3.window.fetch('/api/kagent/status'),
+  ]);
+  if (dispatchTimes.length !== 3) throw new Error('Expected 3 dispatch times');
+  if (dispatchTimes[1] - dispatchTimes[0] < 50) throw new Error('First stagger interval too short');
+  if (dispatchTimes[2] - dispatchTimes[1] < 50) throw new Error('Second stagger interval too short');
+
+  // 4. Max retries exhaustion
+  let always429Attempts = 0;
+  const s4 = setupSandbox(async () => {{
+    always429Attempts++;
+    return {{
+      status: 429,
+      headers: {{ get: () => '0.01' }}
+    }};
+  }});
+  const res4 = await s4.window.fetch('/api/stellar/state');
+  if (res4.status !== 429 || always429Attempts !== 5) {{
+    throw new Error(`Expected 5 attempts and status 429, got ${{always429Attempts}} attempts and ${{res4.status}}`);
+  }}
+
+  // 5. AbortSignal cancellation
+  const s5 = setupSandbox(async () => ({{ status: 200, ok: true }}));
+  const controller = new AbortController();
+  controller.abort();
+  try {{
+    await s5.window.fetch('/api/test', {{ signal: controller.signal }});
+    throw new Error('Should have aborted');
+  }} catch (err) {{
+    if (err.name !== 'AbortError') throw err;
+  }}
+
+  console.log('ALL_KIOSK_GATE_TESTS_PASSED');
+}})().catch(err => {{
+  console.error(err);
+  process.exit(1);
+}});
+"""
+    result = subprocess.run(
+        ["node", "-e", node_test_script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, f"Node test failed:\n{result.stderr}\n{result.stdout}"
+    assert "ALL_KIOSK_GATE_TESTS_PASSED" in result.stdout
