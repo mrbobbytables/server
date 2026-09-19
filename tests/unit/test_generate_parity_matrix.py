@@ -98,7 +98,7 @@ app-containers/podman-5.5.2::portage-stable
     assert pkgs["sys-apps/systemd"] == "257.9"
     assert pkgs["app-containers/podman"] == "5.5.2"
 
-    rows = generator.build_matrix_rows(flatcar_ver, pkgs, sources)
+    rows = generator.build_matrix_rows(flatcar_ver, pkgs, sources, strict=False)
     row_map = {r["component"]: r for r in rows}
 
     # Kernel special row
@@ -140,9 +140,26 @@ def test_checked_in_matrix_is_up_to_date(generator):
 
     pinned_ver = generator.get_flatcar_pinned_version()
     fsdk_ver = generator.check_fsdk_junction_ref()
-    flatcar_version, packages, sources = generator.collect_flatcar_versions(flatcar_version=pinned_ver)
+    try:
+        flatcar_version, packages, sources = generator.collect_flatcar_versions(flatcar_version=pinned_ver)
+    except SystemExit as exc:
+        pytest.skip(f"Flatcar CDN/artifacts unavailable offline: {exc}")
     rows = generator.build_matrix_rows(flatcar_version, packages, sources)
     expected_content = generator.render_markdown(flatcar_version, fsdk_ver, rows)
 
     actual_content = output_path.read_text(encoding="utf-8")
     assert actual_content == expected_content, "Matrix on disk has drifted from generator output."
+
+
+def test_strict_mode_fails_on_missing_atoms(generator, tmp_path):
+    """Ensure build_matrix_rows in strict mode fails fast when in-scope atoms are missing."""
+    mock_dir = tmp_path / "flatcar" / "4593.2.5"
+    mock_dir.mkdir(parents=True)
+    (mock_dir / "version.txt").write_text("FLATCAR_VERSION=4593.2.5\nFLATCAR_BUILD_ID=\"2026-08-11-2350\"\n")
+    (mock_dir / "flatcar_production_image_packages.txt").write_text("sys-apps/systemd-257.9::portage-stable\n")
+    (mock_dir / "flatcar-podman_packages.txt").write_text("")
+
+    flatcar_ver, pkgs, sources = generator.collect_flatcar_versions(flatcar_dir=mock_dir)
+    with pytest.raises(SystemExit) as exc_info:
+        generator.build_matrix_rows(flatcar_ver, pkgs, sources, strict=True)
+    assert "in-scope components missing from Flatcar manifests" in str(exc_info.value)

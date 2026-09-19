@@ -232,6 +232,15 @@ def get_flatcar_pinned_version():
     return match.group(1)
 
 
+def get_flatcar_pinned_kver():
+    """Read flatcar-kver from include/flatcar.yml."""
+    content = read_text(FLATCAR_INCLUDE)
+    match = re.search(r"^\s*flatcar-kver:\s*[\"']?([^\s\"']+)[\"']?\s*$", content, re.MULTILINE)
+    if not match:
+        sys.exit("ERROR: include/flatcar.yml does not declare 'flatcar-kver:'")
+    return match.group(1)
+
+
 def check_fsdk_junction_ref():
     """Verify that elements/freedesktop-sdk.bst pins freedesktop-sdk-26.08.*."""
     content = read_text(FSDK_JUNCTION)
@@ -442,9 +451,18 @@ def collect_flatcar_versions(flatcar_dir=None, flatcar_version="4593.2.5", board
     return flatcar_version, packages, sources
 
 
-def build_matrix_rows(flatcar_version, packages, sources):
+def clean_ticket_version(comp, v):
+    """Normalize version string for downstream ticket description."""
+    if comp == "systemd":
+        return v.split(".")[0]
+    return re.sub(r"[-_](?:r|p)\d+.*$", "", v)
+
+
+def build_matrix_rows(flatcar_version, packages, sources, strict=True):
     """Build the matrix rows by resolving each in-scope component."""
+    kver = get_flatcar_pinned_kver()
     rows = []
+    missing_atoms = []
     for spec in IN_SCOPE_COMPONENTS:
         comp = spec["component"]
         atom = spec["atom"]
@@ -453,12 +471,14 @@ def build_matrix_rows(flatcar_version, packages, sources):
         priority = spec["priority"]
 
         if comp == "kernel":
-            flatcar_ver = f"{flatcar_version} (6.12.102-flatcar)"
+            flatcar_ver = f"{flatcar_version} ({kver})"
             flatcar_src = "version.txt + include/flatcar.yml"
         elif atom and atom in packages:
             flatcar_ver = packages[atom]
             flatcar_src = sources.get(atom, "flatcar_production_image_packages.txt")
         else:
+            if strict:
+                missing_atoms.append(f"{comp} ({atom})")
             continue
 
         gap = compute_gap(spec, flatcar_ver, fsdk_ver)
@@ -473,6 +493,9 @@ def build_matrix_rows(flatcar_version, packages, sources):
             "gap": gap,
             "priority": priority,
         })
+
+    if missing_atoms:
+        sys.exit(f"ERROR: in-scope components missing from Flatcar manifests: {', '.join(missing_atoms)}")
 
     rows.sort(key=lambda r: (PRIORITY_ORDER[r["priority"]], r["component"]))
     return rows
@@ -526,9 +549,9 @@ def render_markdown(flatcar_version, fsdk_version, rows):
         "## Source Citations",
         "",
         f"- Flatcar release {flatcar_version} artifacts fetched from `https://flatcar.cdn.cncf.io/stable/amd64-usr/{flatcar_version}/` with SHA256 checksums pinned in `scripts/generate-parity-matrix.py`:",
-        "  - `version.txt` (`6e86c457...`): release identifier and build ID.",
-        "  - `flatcar_production_image_packages.txt` (`58a43787...`): installed Portage atoms and versions.",
-        "  - `flatcar-podman_packages.txt` (`befde0ac...`): container runtime sysext packages.",
+        f"  - `version.txt` (`{PINNED_ARTIFACTS.get(flatcar_version, {}).get('amd64-usr', {}).get('version.txt', '6e86c457')[:8]}...`): release identifier and build ID.",
+        f"  - `flatcar_production_image_packages.txt` (`{PINNED_ARTIFACTS.get(flatcar_version, {}).get('amd64-usr', {}).get('flatcar_production_image_packages.txt', '58a43787')[:8]}...`): installed Portage atoms and versions.",
+        f"  - `flatcar-podman_packages.txt` (`{PINNED_ARTIFACTS.get(flatcar_version, {}).get('amd64-usr', {}).get('flatcar-podman_packages.txt', 'befde0ac')[:8]}...`): container runtime sysext packages.",
         f"- FSDK 26.08 source elements: pinned junction ref `freedesktop-sdk-{fsdk_version}` in `elements/freedesktop-sdk.bst`.",
         "",
         "## Downstream Substitution Tickets",
@@ -536,26 +559,41 @@ def render_markdown(flatcar_version, fsdk_version, rows):
         "The following substitution tickets are derived directly from the matrix ordering:",
         "",
         "1. **Load-bearing (phase 6a)**",
-        "   - `subst(kernel)`: reference import `flatcar/flatcar-kernel.bst` (6.12.102-flatcar)",
-        "   - `subst(glibc)`: pin glibc 2.41 in `bootstrap/glibc.bst`",
-        "   - `subst(systemd)`: pin systemd 257 in `components/systemd.bst`",
-        "2. **Important base userspace (phase 6b)**",
-        "   - `subst(coreutils)`: pin coreutils 9.8 in `bootstrap/coreutils.bst`",
-        "   - `subst(curl)`: pin curl 8.16.0 in `components/curl.bst`",
-        "   - `subst(glib)`: pin glib 2.84.4 in `components/glib.bst`",
-        "   - `subst(gnupg)`: pin gnupg 2.5.16 in `components/gnupg.bst`",
-        "   - `subst(libcap)`: pin libcap 2.76 in `components/libcap.bst`",
-        "   - `subst(libffi)`: pin libffi 3.5.2 in `components/libffi.bst`",
-        "   - `subst(openssh)`: pin openssh 10.4 in `components/openssh.bst`",
-        "   - `subst(openssl)`: pin openssl 3.5.5 in `components/openssl.bst`",
-        "   - `subst(shadow)`: pin shadow 4.14.8 in `components/shadow.bst`",
-        "   - `subst(util-linux)`: pin util-linux 2.41.2 in `components/util-linux.bst`",
-        "   - Version matches (verification only): `bash` (5.3), `dbus` (1.16.2), `kmod` (34.2), `zstd` (1.5.7)",
-        "3. **Deferred (phase 6c)**",
-        "   - `subst(ca-certificates)`: evaluate NSS certdata 3.126 vs Fedora packaging",
-        "   - `subst(podman)`: delivery via sysext matching Flatcar podman 5.5.2",
-        "   - `subst(xfsprogs)`: pin xfsprogs 6.16.0 in `components/xfsprogs.bst`",
     ])
+
+    rows_by_comp = {r["component"]: r for r in rows}
+    kernel_entry = rows_by_comp.get("kernel", {})
+    kernel_kver = kernel_entry.get("flatcar_version", "").split()[-1].strip("()") if kernel_entry else ""
+    glibc_ver = clean_ticket_version("glibc", rows_by_comp.get("glibc", {}).get("flatcar_version", ""))
+    systemd_ver = clean_ticket_version("systemd", rows_by_comp.get("systemd", {}).get("flatcar_version", ""))
+
+    out.append(f"   - `subst(kernel)`: reference import `flatcar/flatcar-kernel.bst` ({kernel_kver})")
+    out.append(f"   - `subst(glibc)`: pin glibc {glibc_ver} in `bootstrap/glibc.bst`")
+    out.append(f"   - `subst(systemd)`: pin systemd {systemd_ver} in `components/systemd.bst`")
+
+    out.append("2. **Important base userspace (phase 6b)**")
+    for comp in ["coreutils", "curl", "glib", "gnupg", "libcap", "libffi", "openssh", "openssl", "shadow", "util-linux"]:
+        if comp in rows_by_comp:
+            r = rows_by_comp[comp]
+            v = clean_ticket_version(comp, r["flatcar_version"])
+            out.append(f"   - `subst({comp})`: pin {comp} {v} in `{r['fsdk_element']}`")
+
+    version_matches = []
+    for comp in ["bash", "dbus", "kmod", "zstd"]:
+        if comp in rows_by_comp:
+            v = clean_ticket_version(comp, rows_by_comp[comp]["flatcar_version"])
+            version_matches.append(f"`{comp}` ({v})")
+    if version_matches:
+        out.append(f"   - Version matches (verification only): {', '.join(version_matches)}")
+
+    out.append("3. **Deferred (phase 6c)**")
+    ca_ver = rows_by_comp.get("ca-certificates", {}).get("flatcar_version", "")
+    podman_ver = clean_ticket_version("podman", rows_by_comp.get("podman", {}).get("flatcar_version", ""))
+    xfs_ver = clean_ticket_version("xfsprogs", rows_by_comp.get("xfsprogs", {}).get("flatcar_version", ""))
+    xfs_elem = rows_by_comp.get("xfsprogs", {}).get("fsdk_element", "components/xfsprogs.bst")
+    out.append(f"   - `subst(ca-certificates)`: evaluate NSS certdata {ca_ver} vs Fedora packaging")
+    out.append(f"   - `subst(podman)`: delivery via sysext matching Flatcar podman {podman_ver}")
+    out.append(f"   - `subst(xfsprogs)`: pin xfsprogs {xfs_ver} in `{xfs_elem}`")
 
     return "\n".join(out) + "\n"
 
