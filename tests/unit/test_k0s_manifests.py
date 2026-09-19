@@ -36,8 +36,20 @@ def test_k0s_manifest_files():
     assert (ks_dir / "10-kubeflex-operator.yaml").is_file()
     assert (ks_dir / "20-postgres.yaml").is_file()
     assert (ks_dir / "30-kubestellar-core.yaml").is_file()
+    assert (ks_dir / "35-default-controlplane.yaml").is_file()
     assert (ks_dir / "40-kubestellar-console.yaml").is_file()
     assert (ks_dir / "41-kubestellar-kiosk-proxy.yaml").is_file()
+
+
+def test_default_controlplanes_manifest():
+    manifest = ROOT / "files" / "k0s" / "manifests" / "kubestellar" / "35-default-controlplane.yaml"
+    assert manifest.is_file(), "35-default-controlplane.yaml missing"
+    docs = list(yaml.safe_load_all(manifest.read_text()))
+    controlplanes = [d for d in docs if d and d.get("kind") == "ControlPlane"]
+    assert len(controlplanes) >= 2
+    types_by_name = {cp["metadata"]["name"]: cp["spec"]["type"] for cp in controlplanes}
+    assert types_by_name.get("its1") == "host"
+    assert types_by_name.get("wds1") == "k8s"
 
 
 def test_postgres_password_not_hardcoded():

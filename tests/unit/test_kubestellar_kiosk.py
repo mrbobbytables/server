@@ -80,12 +80,11 @@ def test_gate_waits_for_session_and_blocks_until_agent_health() -> None:
     assert "z-index: 2147483647" in css
 
 
-def test_console_provides_local_and_oauth_login_options() -> None:
+def test_console_uses_github_oauth_secret_without_demo_mode() -> None:
     console = CONSOLE_MANIFEST.read_text(encoding="utf-8")
 
-    assert "name: DEV_MODE" in console
-    assert 'value: "true"' in console
-    assert "name: ALLOW_DEV_MODE_IN_CLUSTER" in console
+    assert "DEV_MODE" not in console
+    assert "ALLOW_DEV_MODE_IN_CLUSTER" not in console
     assert "hostPort:" not in console
     assert "name: GITHUB_CLIENT_ID" in console
     assert "name: GITHUB_CLIENT_SECRET" in console
