@@ -44,7 +44,8 @@ Design choices:
   `systemd-tmpfiles`. k0s's internal manifest deployer automatically reconciles them.
 - **Helm and autopilot disabled.** `--disable-components=helm,autopilot` ensures zero runtime Helm dependencies and prevents single-node controlnode timeout loops.
 - **Flatcar sysext pattern.** The extension uses `ID=_any` in its release metadata so it merges on any host image.
-- **First-boot background activation.** `k0s-first-boot.service` copies `/var/lib/k0s/k0s.raw` to `/run/extensions/k0s.raw`, merges the sysext, seeds declarative manifest stacks via `systemd-tmpfiles`, and enables `k0scontroller.service` on boot without holding up system startup.
+- **First-boot background activation.** `k0s-first-boot.service` copies `/var/lib/k0s/k0s.raw` to `/run/extensions/k0s.raw`, merges the sysext, seeds declarative manifest stacks via `systemd-tmpfiles`, and enables `k0scontroller.service` and `kc-agent.service` on boot without holding up system startup.
+- **Local cluster auto-onboarding.** `kc-agent.service` automatically connects KubeStellar Console to the local k0s cluster using `/var/lib/k0s/pki/admin.conf` on first boot.
 - **OTA delivery.** A k0s component `systemd-sysupdate` transfer file
   (`70-k0s.transfer`) is installed in the base OS so hosts can pull new k0s
   sysext releases from GitHub Releases without updating the root or UKI.
@@ -54,9 +55,12 @@ Design choices:
 | Path | Purpose |
 |------|---------|
 | `include/k0s.yml` | **Single source of truth for the k0s version axis** (`%{k0s-upstream-tag}`, `%{k0s-version}`). |
+| `include/kc-agent.yml` | Single source of truth for the `kc-agent` version axis. |
 | `elements/k0s/k0s-bin.bst` | Pins the upstream `k0s` binary SHA256; the release URL is derived from `include/k0s.yml`. |
+| `elements/k0s/kc-agent-bin.bst` | Pins the upstream `kc-agent` binary SHA256; release URL derived from `include/kc-agent.yml`. |
 | `elements/oci/k0s-sysext.bst` | Builds the EROFS sysext image (`k0s-<k0s-version>.raw`). |
 | `files/k0s/sysext/k0scontroller.service` | systemd unit for the k0s single-node controller/worker. Not enabled by default. |
+| `files/k0s/sysext/kc-agent.service` | systemd unit for `kc-agent` connecting console to `/var/lib/k0s/pki/admin.conf`. |
 | `files/k0s/sysext/extension-release.k0s` | Static sysext identity (`ID=_any`); `VERSION_ID=`/`ARCHITECTURE=` are appended at build time. |
 | `files/k0s/sysext/k0s-manifests.conf` | tmpfiles rule that copies declarative stacks to `/var/lib/k0s/manifests/`. |
 | `files/k0s/manifests/argocd/` | Raw YAML manifests for Argo CD. |

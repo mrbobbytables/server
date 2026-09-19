@@ -102,6 +102,10 @@ def test_k0s_first_boot_retries_until_controller_starts() -> None:
         in service
     )
     assert (
+        "ExecStart=/usr/bin/systemctl enable --now kc-agent.service"
+        in service
+    )
+    assert (
         "ExecStartPost=/usr/bin/touch /var/lib/k0s/.first-boot-complete"
         not in service
     )

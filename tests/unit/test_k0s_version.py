@@ -25,6 +25,23 @@ def test_k0s_bin_element():
     assert "ca1e9e68107335846e8296777fce2ccd654284e6265b4b5d32c34ead872af98f" in content
 
 
+def test_kc_agent_version_ssot():
+    kc_yml = ROOT / "include" / "kc-agent.yml"
+    assert kc_yml.is_file(), "include/kc-agent.yml missing"
+    data = yaml.safe_load(kc_yml.read_text())
+    vars_ = data.get("variables", {})
+    assert vars_.get("kc-agent-version") == "0.3.41"
+
+
+def test_kc_agent_bin_element():
+    bin_bst = ROOT / "elements" / "k0s" / "kc-agent-bin.bst"
+    assert bin_bst.is_file(), "elements/k0s/kc-agent-bin.bst missing"
+    content = bin_bst.read_text()
+    assert "base/base-stack.bst" in content
+    assert "github:kubestellar/console/releases/download/" in content
+    assert "052b80bd0700f1c7e22ed5d6ad7547a45d6441d6a2cd40609fed1e69bf592df2" in content
+
+
 def test_k0s_version_checker_reads_the_component_transfer():
     checker = ROOT / ".github" / "scripts" / "check-k0s-version.py"
     spec = importlib.util.spec_from_file_location("check_k0s_version", checker)

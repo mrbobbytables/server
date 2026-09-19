@@ -19,6 +19,9 @@ build-depends:
   - filename: k0s/k0s-bin.bst
     config:
       location: /
+  - filename: k0s/kc-agent-bin.bst
+    config:
+      location: /
 
 sources:
   - kind: local
@@ -65,8 +68,13 @@ config:
       cp -a /usr/bin/k0s sysext/usr/bin/k0s
       chmod 0755 sysext/usr/bin/k0s
 
-      # Stage systemd service
+      # Stage kc-agent binary
+      cp -a /usr/bin/kc-agent sysext/usr/bin/kc-agent
+      chmod 0755 sysext/usr/bin/kc-agent
+
+      # Stage systemd services
       cp -a sysext-src/k0scontroller.service sysext/usr/lib/systemd/system/
+      cp -a sysext-src/kc-agent.service sysext/usr/lib/systemd/system/
 
       # Stage extension release metadata
       cp -a sysext-src/extension-release.k0s sysext/usr/lib/extension-release.d/

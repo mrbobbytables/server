@@ -1,0 +1,3 @@
+# Single source of truth for the kc-agent version axis.
+variables:
+  kc-agent-version: "0.3.41"

@@ -165,6 +165,7 @@ calls() {
     [ "$status" -eq 0 ]
     run calls
     [[ "$output" == *"systemctl enable --now k0scontroller.service"* ]]
+    [[ "$output" == *"systemctl enable --now kc-agent.service"* ]]
 }
 
 @test "the server alias role enables k0scontroller.service" {
@@ -172,6 +173,7 @@ calls() {
     [ "$status" -eq 0 ]
     run calls
     [[ "$output" == *"systemctl enable --now k0scontroller.service"* ]]
+    [[ "$output" == *"systemctl enable --now kc-agent.service"* ]]
 }
 
 @test "an unknown role exits 1 and names the supported roles" {
@@ -186,6 +188,7 @@ calls() {
     [ "$status" -eq 1 ]
     run calls
     [[ "$output" != *"k0scontroller.service"* ]]
+    [[ "$output" != *"kc-agent.service"* ]]
 }
 
 @test "the role comparison is case sensitive" {

@@ -1,0 +1,23 @@
+[Unit]
+Description=kc-agent - KubeStellar Console local cluster agent
+Documentation=https://github.com/kubestellar/console
+ConditionFileIsExecutable=/usr/bin/kc-agent
+After=network-online.target k0scontroller.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=KAGENTI_CONTROLLER_URL=none
+StateDirectory=kc-agent
+WorkingDirectory=/var/lib/kc-agent
+ExecStart=/usr/bin/kc-agent -kubeconfig /var/lib/k0s/pki/admin.conf -allowed-origins http://localhost:8080,http://127.0.0.1:8080
+Restart=always
+RestartSec=5s
+
+Delegate=yes
+KillMode=process
+LimitNOFILE=1048576
+LimitNPROC=infinity
+
+[Install]
+WantedBy=multi-user.target

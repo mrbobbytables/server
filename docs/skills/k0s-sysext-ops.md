@@ -33,8 +33,9 @@ systemd-sysext merge
 # 3. Seed declarative manifest stacks into /var/lib/k0s/manifests/
 systemd-tmpfiles --create /usr/lib/tmpfiles.d/k0s-manifests.conf
 
-# 4. Start the controller service
+# 4. Start the controller and agent services
 systemctl enable --now k0scontroller.service
+systemctl enable --now kc-agent.service
 ```
 
 ## Verifying Manifest Reconciliation

@@ -17,6 +17,24 @@ def test_k0s_service_unit():
     assert "--single" in text
 
 
+def test_kc_agent_service_unit():
+    unit = ROOT / "files" / "k0s" / "sysext" / "kc-agent.service"
+    assert unit.is_file(), "kc-agent.service missing"
+    text = unit.read_text()
+    assert "ConditionFileIsExecutable=/usr/bin/kc-agent" in text
+    assert "-kubeconfig /var/lib/k0s/pki/admin.conf" in text
+    assert "-allowed-origins http://localhost:8080,http://127.0.0.1:8080" in text
+    assert "Environment=KAGENTI_CONTROLLER_URL=none" in text
+    assert "After=network-online.target k0scontroller.service" in text
+
+
+def test_kc_agent_sysext_packaging():
+    sysext = (ROOT / "elements" / "oci" / "k0s-sysext.bst").read_text()
+    assert "filename: k0s/kc-agent-bin.bst" in sysext
+    assert "cp -a /usr/bin/kc-agent sysext/usr/bin/kc-agent" in sysext
+    assert "cp -a sysext-src/kc-agent.service sysext/usr/lib/systemd/system/" in sysext
+
+
 def test_k0s_manifests_conf():
     conf = ROOT / "files" / "k0s" / "sysext" / "k0s-manifests.conf"
     assert conf.is_file(), "k0s-manifests.conf missing"
