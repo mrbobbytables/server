@@ -142,7 +142,7 @@ def test_flatcar_zfs_removes_udevd_sysext_ordering_dropin() -> None:
     flatcar_zfs = FLATCAR_ZFS_ELEMENT.read_text(encoding="utf-8")
 
     assert (
-        'rm -rf "%{install-root}/usr/lib/systemd/system/systemd-udevd.service.d"'
+        'rm -f "%{install-root}/usr/lib/systemd/system/systemd-udevd.service.d/10-zfs.conf"'
         in flatcar_zfs
     )
 

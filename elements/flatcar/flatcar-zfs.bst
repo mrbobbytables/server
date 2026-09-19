@@ -38,4 +38,5 @@ config:
       # Leaving this drop-in causes systemd-udevd to wait for systemd-sysext.service,
       # which waits for local-fs.target, which waits for var.mount, which waits for
       # the udev device unit — creating a boot deadlock.
-      rm -rf "%{install-root}/usr/lib/systemd/system/systemd-udevd.service.d"
+      rm -f "%{install-root}/usr/lib/systemd/system/systemd-udevd.service.d/10-zfs.conf"
+      rmdir "%{install-root}/usr/lib/systemd/system/systemd-udevd.service.d" 2>/dev/null || true
