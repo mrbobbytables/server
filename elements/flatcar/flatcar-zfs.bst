@@ -29,10 +29,6 @@ config:
       # Extract the SquashFS sysext directly into the element install root
       unsquashfs -no-xattrs -f -d "%{install-root}" flatcar-zfs.raw
 
-      # Also preserve the raw sysext image under /usr/lib/sysexts for runtime sysext usage
-      mkdir -p "%{install-root}/usr/lib/sysexts"
-      install -D -m 0644 flatcar-zfs.raw "%{install-root}/usr/lib/sysexts/zfs.raw"
-
       # Drop Flatcar's udevd sysext ordering override. In Flatcar, ZFS is loaded as
       # a runtime sysext, so udevd was ordered After=systemd-sysext.service.
       # In Bluefin Server, ZFS is extracted directly into the OS rootfs at build time.
@@ -43,3 +39,10 @@ config:
       if [ -f "%{install-root}/usr/lib/tmpfiles.d/10-zfs.conf" ]; then
         sed -i "/systemd-udevd\.service\.d/d" "%{install-root}/usr/lib/tmpfiles.d/10-zfs.conf"
       fi
+
+      # Preserve a raw sysext image under /usr/lib/sysexts for runtime sysext usage.
+      # Rebuild it from the cleaned tree rather than shipping the upstream image, so
+      # the udevd ordering override above cannot reappear if the raw is ever merged.
+      mksquashfs "%{install-root}" zfs-cleaned.raw -noappend -no-xattrs -all-root
+      mkdir -p "%{install-root}/usr/lib/sysexts"
+      install -D -m 0644 zfs-cleaned.raw "%{install-root}/usr/lib/sysexts/zfs.raw"

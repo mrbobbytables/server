@@ -379,15 +379,6 @@ test-installer-artifact:
         break
       fi
 
-      HEALTHZ_JSON=$(curl --silent --fail --max-time 2 http://127.0.0.1:8080/healthz 2>/dev/null || true)
-      if [ -n "$HEALTHZ_JSON" ] && echo "$HEALTHZ_JSON" | jq -e '.status == "ok"' >/dev/null 2>&1; then
-        ROOT_CODE=$(curl --silent --fail --max-time 2 --output /dev/null --write-out "%{http_code}" http://127.0.0.1:8080/ 2>/dev/null || true)
-        if [ "$ROOT_CODE" = "200" ]; then
-          echo "==> KubeStellar Console is healthy: /healthz status ok, / returned HTTP 200"
-          break
-        fi
-      fi
-
       NOW=$(date +%s)
       ELAPSED=$((NOW - START_TIME))
       if [ "$ELAPSED" -ge "$DEADLINE_SECS" ]; then

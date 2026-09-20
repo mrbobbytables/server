@@ -152,6 +152,18 @@ def test_flatcar_zfs_removes_udevd_sysext_ordering_dropin() -> None:
     )
     assert "freedesktop-sdk.bst:components/sed.bst" in flatcar_zfs
 
+    # The preserved raw sysext must be rebuilt from the cleaned tree, not the
+    # untouched upstream image, so the ordering override cannot come back if the
+    # raw is ever merged at runtime.
+    assert "install -D -m 0644 flatcar-zfs.raw" not in flatcar_zfs
+    assert (
+        'mksquashfs "%{install-root}" zfs-cleaned.raw -noappend -no-xattrs -all-root'
+        in flatcar_zfs
+    )
+    assert flatcar_zfs.index("mksquashfs") > flatcar_zfs.index(
+        'rm -rf "%{install-root}/usr/lib/systemd/system/systemd-udevd.service.d"'
+    )
+
 
 def test_var_partition_contracts_use_consistent_partlabel() -> None:
     import base64
@@ -181,4 +193,10 @@ def test_installer_smoke_probes_the_kiosk_over_tls_from_inside_the_guest() -> No
     assert "--insecure" in justfile
     assert "systemd.extra-unit.bluefin-kiosk-ready.service" in justfile
     assert "systemd.wants=bluefin-kiosk-ready.service" in justfile
+    # The host cannot reach the guest's loopback-bound kiosk proxy, so no
+    # host-side probe may remain in the smoke test — a stray host process on
+    # port 8080 would otherwise let it pass without the guest being ready.
+    smoke = justfile.split("install-vm:")[0]
+    assert "http://127.0.0.1:8080/healthz" not in smoke
+    assert "KIOSK_CONSOLE_READY" in smoke
 
