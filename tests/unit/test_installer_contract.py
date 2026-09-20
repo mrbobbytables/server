@@ -119,9 +119,9 @@ def test_target_uki_build_does_not_invoke_dracut() -> None:
     assert "dracut" not in commands_text
     assert "--add-drivers" not in commands_text
     assert "ld.so.cache" not in commands_text
-    target_uki_cmd = commands[1] if len(commands) > 1 else ""
-    assert '--linux="${TARGET_KERNEL}"' in target_uki_cmd
-    assert "--initrd" not in target_uki_cmd
+    target_uki_cmds = [cmd for cmd in commands if '--linux="${TARGET_KERNEL}"' in cmd]
+    assert len(target_uki_cmds) == 1, "Expected exactly one target UKI build command"
+    assert "--initrd" not in target_uki_cmds[0]
 
 
 def test_installer_omits_module_force_load_and_udev_settle_workarounds() -> None:
