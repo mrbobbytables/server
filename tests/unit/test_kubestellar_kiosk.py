@@ -83,16 +83,6 @@ def test_gate_waits_for_session_and_blocks_until_agent_health() -> None:
 def test_console_provides_local_and_oauth_login_options() -> None:
     console = CONSOLE_MANIFEST.read_text(encoding="utf-8")
 
-    assert "kind: ServiceAccount" in console
-    assert "kind: ClusterRole" in console
-    assert "kind: ClusterRoleBinding" in console
-    assert "serviceAccountName: kubestellar-console" in console
-    assert (
-        'resources: ["nodes", "namespaces", "pods", "services", "events", "configmaps"]'
-        in console
-    )
-    assert 'apiGroups: ["metrics.k8s.io"]' in console
-    assert 'apiGroups: ["tenancy.kflex.kubestellar.org"]' in console
     assert "name: DEV_MODE" in console
     assert 'value: "true"' in console
     assert "name: ALLOW_DEV_MODE_IN_CLUSTER" in console
@@ -103,6 +93,21 @@ def test_console_provides_local_and_oauth_login_options() -> None:
     assert "key: client-id" in console
     assert "key: client-secret" in console
     assert "optional: true" in console
+
+
+def test_console_has_cluster_read_rbac() -> None:
+    console = CONSOLE_MANIFEST.read_text(encoding="utf-8")
+
+    assert "kind: ServiceAccount" in console
+    assert "kind: ClusterRole" in console
+    assert "kind: ClusterRoleBinding" in console
+    assert "serviceAccountName: kubestellar-console" in console
+    assert (
+        'resources: ["nodes", "namespaces", "pods", "services", "events"]'
+        in console
+    )
+    assert 'apiGroups: ["metrics.k8s.io"]' in console
+    assert 'apiGroups: ["tenancy.kflex.kubestellar.org"]' in console
 
 
 def test_proxy_is_the_only_public_console_endpoint() -> None:

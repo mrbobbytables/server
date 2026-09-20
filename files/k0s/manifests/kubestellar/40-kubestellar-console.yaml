@@ -15,7 +15,7 @@ metadata:
   name: kubestellar-console
 rules:
 - apiGroups: [""]
-  resources: ["nodes", "namespaces", "pods", "services", "events", "configmaps"]
+  resources: ["nodes", "namespaces", "pods", "services", "events"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
