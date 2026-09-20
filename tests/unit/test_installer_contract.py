@@ -119,6 +119,8 @@ def test_target_uki_build_does_not_invoke_dracut() -> None:
     assert "dracut" not in commands_text
     assert "--add-drivers" not in commands_text
     assert "ld.so.cache" not in commands_text
+    assert '--linux="${TARGET_KERNEL}"' in commands_text
+    assert "--initrd" not in commands_text
 
 
 def test_installer_omits_module_force_load_and_udev_settle_workarounds() -> None:
