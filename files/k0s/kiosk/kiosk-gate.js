@@ -7,7 +7,11 @@
   const BACKOFF_FACTOR = 2
   const MAX_RETRIES = 4
   const STAGGER_INTERVAL_MS = 75
+  const MAX_RETRY_DELAY_MS = 30_000
 
+  // Page-lifetime cursor: any concurrent /api burst is spaced, not only the
+  // first-boot hydration one, because the console rate limiter is also
+  // page-lifetime and periodic refreshes fan out the same way.
   let lastDispatchTime = -STAGGER_INTERVAL_MS
 
   const sleep = (ms, signal) => new Promise((resolve, reject) => {
@@ -53,18 +57,19 @@
     }
   }
 
+  const clampDelay = (ms) => Math.min(Math.max(ms, 0), MAX_RETRY_DELAY_MS)
+
   const parseRetryAfter = (response) => {
     try {
       const header = response.headers?.get?.('Retry-After')
       if (!header) return null
       const seconds = Number(header)
       if (!Number.isNaN(seconds) && seconds >= 0) {
-        return seconds * 1000
+        return clampDelay(seconds * 1000)
       }
       const dateMs = Date.parse(header)
       if (!Number.isNaN(dateMs)) {
-        const diff = dateMs - Date.now()
-        return diff > 0 ? diff : 0
+        return clampDelay(dateMs - Date.now())
       }
     } catch {
       // fallback
@@ -109,7 +114,7 @@
         const retryAfterMs = parseRetryAfter(response)
         const backoffMs = retryAfterMs !== null
           ? retryAfterMs
-          : INITIAL_BACKOFF_MS * Math.pow(BACKOFF_FACTOR, attempt - 1)
+          : clampDelay(INITIAL_BACKOFF_MS * Math.pow(BACKOFF_FACTOR, attempt - 1))
 
         await sleep(backoffMs, signal)
       }
@@ -164,9 +169,20 @@
     }, true)
   }
 
-  if (typeof window !== 'undefined') {
+  const startGateLoop = () => {
     window.setInterval(() => void updateGate(), 2_000)
     void updateGate()
+  }
+
+  if (typeof window !== 'undefined') {
+    // The interceptor above is installed at parse time, but the gate markup
+    // needs document.body, which does not exist yet when this script runs
+    // synchronously from <head>.
+    if (typeof document !== 'undefined' && document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', startGateLoop, { once: true })
+    } else {
+      startGateLoop()
+    }
   }
 
   if (typeof module !== 'undefined' && module.exports) {
@@ -174,10 +190,12 @@
       isApiRequest,
       parseRetryAfter,
       staggerRequest,
+      clampDelay,
       INITIAL_BACKOFF_MS,
       BACKOFF_FACTOR,
       MAX_RETRIES,
       STAGGER_INTERVAL_MS,
+      MAX_RETRY_DELAY_MS,
     }
   }
 })()

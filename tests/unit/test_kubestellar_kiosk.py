@@ -59,12 +59,11 @@ def test_proxy_injects_only_csp_safe_same_origin_assets() -> None:
     assert "sub_filter_types" not in nginx
     assert (
         'sub_filter \'</head>\' '
-        '\'<link rel="stylesheet" href="/kiosk-gate.css"></head>\';'
+        '\'<link rel="stylesheet" href="/kiosk-gate.css">'
+        '<script src="/kiosk-gate.js"></script></head>\';'
     ) in nginx
-    assert (
-        'sub_filter \'</body>\' '
-        '\'<script defer src="/kiosk-gate.js"></script></body>\';'
-    ) in nginx
+    assert "<script defer" not in nginx
+    assert "'</body>'" not in nginx
     assert "Content-Security-Policy" not in nginx
 
 
@@ -124,8 +123,11 @@ def test_kiosk_gate_mitigates_dashboard_rate_limiting() -> None:
     assert "BACKOFF_FACTOR = 2" in script
     assert "MAX_RETRIES = 4" in script
     assert "STAGGER_INTERVAL_MS = 75" in script
+    assert "MAX_RETRY_DELAY_MS = 30_000" in script
     assert "staggerRequest" in script
     assert "parseRetryAfter" in script
+    assert "clampDelay" in script
+    assert "DOMContentLoaded" in script
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not found")
@@ -227,6 +229,79 @@ function setupSandbox(mockFetch) {{
     throw new Error('Should have aborted');
   }} catch (err) {{
     if (err.name !== 'AbortError') throw err;
+  }}
+
+  // 6. Retry-After is clamped to a sane maximum
+  const exportsSandbox = {{
+    window: {{
+      location: {{ origin: 'http://localhost:8080' }},
+      localStorage: {{ getItem: () => null }},
+      setInterval: () => {{}},
+      fetch: async () => ({{ status: 200, ok: true }}),
+    }},
+    document: {{
+      getElementById: () => null,
+      addEventListener: () => {{}},
+      body: {{ insertAdjacentHTML: () => {{}} }},
+    }},
+    module: {{ exports: {{}} }},
+    setTimeout,
+    clearTimeout,
+    Date,
+    URL,
+    DOMException,
+    console,
+  }};
+  exportsSandbox.window.window = exportsSandbox.window;
+  vm.runInNewContext(kioskCode, exportsSandbox);
+  const api = exportsSandbox.module.exports;
+  const hugeDelay = api.parseRetryAfter({{ headers: {{ get: () => '600' }} }});
+  if (hugeDelay !== api.MAX_RETRY_DELAY_MS) {{
+    throw new Error(`Retry-After not clamped: got ${{hugeDelay}}`);
+  }}
+  const pastDate = api.parseRetryAfter({{
+    headers: {{ get: () => new Date(Date.now() - 60000).toUTCString() }},
+  }});
+  if (pastDate !== 0) throw new Error(`Past Retry-After should be 0, got ${{pastDate}}`);
+  const farDate = api.parseRetryAfter({{
+    headers: {{ get: () => new Date(Date.now() + 3600000).toUTCString() }},
+  }});
+  if (farDate !== api.MAX_RETRY_DELAY_MS) {{
+    throw new Error(`Far Retry-After not clamped: got ${{farDate}}`);
+  }}
+
+  // 7. Interceptor installs synchronously, before document.body exists
+  let patchedBeforeBody = null;
+  const headSandbox = {{
+    window: {{
+      location: {{ origin: 'http://localhost:8080' }},
+      localStorage: {{ getItem: () => null }},
+      setInterval: () => {{ throw new Error('gate loop started before DOM ready'); }},
+      fetch: async () => ({{ status: 200, ok: true }}),
+    }},
+    document: {{
+      readyState: 'loading',
+      body: null,
+      getElementById: () => null,
+      addEventListener: (type) => {{
+        if (type === 'DOMContentLoaded') patchedBeforeBody = true;
+      }},
+    }},
+    setTimeout,
+    clearTimeout,
+    Date,
+    URL,
+    DOMException,
+    console,
+  }};
+  const preInstallFetch = headSandbox.window.fetch;
+  headSandbox.window.window = headSandbox.window;
+  vm.runInNewContext(kioskCode, headSandbox);
+  if (headSandbox.window.fetch === preInstallFetch) {{
+    throw new Error('fetch was not patched at script evaluation time');
+  }}
+  if (patchedBeforeBody !== true) {{
+    throw new Error('gate loop was not deferred to DOMContentLoaded');
   }}
 
   console.log('ALL_KIOSK_GATE_TESTS_PASSED');
