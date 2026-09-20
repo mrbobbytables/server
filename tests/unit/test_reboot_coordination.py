@@ -24,7 +24,7 @@ REBOOT_DROPIN_DIR = (
 ELEMENTS_DIR = REPO_ROOT / "elements" / "bluefin-server"
 
 REBOOT_DROPIN = REBOOT_DROPIN_DIR / "reboot-coordination.conf"
-REBOOT_PRESET = SYSTEMD_PRESET_DIR / "zz-enable-sysupdate-reboot.preset"
+REBOOT_PRESET = SYSTEMD_PRESET_DIR / "80-enable-sysupdate-reboot.preset"
 REBOOT_ELEMENT = ELEMENTS_DIR / "os-sysupdate-reboot.bst"
 OS_STACK = ELEMENTS_DIR / "os-stack.bst"
 KURED_HOOK = SYSUPDATE_DROPIN_DIR / "kured-hook.conf"
@@ -39,7 +39,7 @@ def load_ini(path: Path) -> configparser.ConfigParser:
 
 def test_reboot_coordination_files_exist():
     assert REBOOT_DROPIN.is_file(), "reboot-coordination.conf drop-in is missing"
-    assert REBOOT_PRESET.is_file(), "zz-enable-sysupdate-reboot.preset is missing"
+    assert REBOOT_PRESET.is_file(), "80-enable-sysupdate-reboot.preset is missing"
     assert REBOOT_ELEMENT.is_file(), "os-sysupdate-reboot.bst element is missing"
 
 
@@ -85,6 +85,12 @@ def test_reboot_dropin_contract():
 def test_reboot_preset_enables_timer():
     content = REBOOT_PRESET.read_text()
     assert "enable systemd-sysupdate-reboot.timer" in content
+    # systemd preset files are evaluated in lexicographic filename order across
+    # directories, earliest match wins. freedesktop-sdk ships 90-sysupdate.preset
+    # which disables the timer; our preset must sort before 90-sysupdate.preset.
+    assert REBOOT_PRESET.name < "90-sysupdate.preset", (
+        f"{REBOOT_PRESET.name} must sort before 90-sysupdate.preset to override FSDK's disable"
+    )
 
 
 def test_exec_condition_kubernetes_interlock_logic(tmp_path):
