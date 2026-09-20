@@ -97,7 +97,6 @@ def test_flatcar_usr_element_structure() -> None:
     assert "base/base-stack.bst" in build_deps, "Must depend on base/base-stack.bst"
     assert "freedesktop-sdk.bst:components/tar.bst" in build_deps
     assert "freedesktop-sdk.bst:components/gzip.bst" in build_deps
-    assert "freedesktop-sdk.bst:components/findutils.bst" in build_deps
 
     # Prebuilt binaries must not be stripped
     variables = data.get("variables", {})

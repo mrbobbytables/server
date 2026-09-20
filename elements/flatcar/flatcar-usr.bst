@@ -14,7 +14,6 @@ build-depends:
   - base/base-stack.bst
   - freedesktop-sdk.bst:components/tar.bst
   - freedesktop-sdk.bst:components/gzip.bst
-  - freedesktop-sdk.bst:components/findutils.bst
 
 variables:
   strip-binaries: ""
