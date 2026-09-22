@@ -336,6 +336,18 @@ test-installer-artifact:
 
     DEADLINE_SECS="${SHOW_ME_THE_FUTURE_DEADLINE:-${SHOW_ME_THE_FUTURE_TIMEOUT:-600}}"
     START_TIME=$(date +%s)
+
+    # Upstream synthetic demo fixtures (console pkg/api/handlers/demo_data.go
+    # GetDemoClusters). The console only sets .source == "demo" for requests
+    # carrying X-Demo-Mode: true, which this plain curl never sends, so
+    # matching these fixture names is what actually rejects demo data here.
+    DEMO_CLUSTER_NAMES='["kind-local","minikube","k3s-edge","eks-prod-us-east-1","gke-staging","aks-dev-westeu","openshift-prod","oci-oke-phoenix","alibaba-ack-shanghai","do-nyc1-prod","rancher-mgmt","vllm-gpu-cluster"]'
+    # Require live discovery: a k8s/mcp source that reports at least one
+    # cluster, none of which is a demo fixture. An empty .clusters array is
+    # rejected because the k8s fallback returns {"clusters": [], "source": "k8s"}
+    # before any cluster is reachable.
+    CLUSTERS_FILTER='.source != "demo" and (.source == "k8s" or .source == "mcp") and ((.clusters // []) | length) > 0 and (any(.clusters[]?.name; . as $name | $demo | index($name) != null) | not)'
+
     echo "==> Polling KubeStellar Console readiness at http://127.0.0.1:8080 (deadline: ${DEADLINE_SECS}s)..."
 
     while true; do
@@ -353,8 +365,8 @@ test-installer-artifact:
         ROOT_CODE=$(curl --silent --fail --max-time 2 --output /dev/null --write-out "%{http_code}" http://127.0.0.1:8080/ 2>/dev/null || true)
         if [ "$ROOT_CODE" = "200" ]; then
           CLUSTERS_JSON=$(curl --silent --fail --max-time 2 http://127.0.0.1:8080/api/mcp/clusters 2>/dev/null || true)
-          # Ensure actual cluster discovery is active and not silently passing on synthetic demo mode
-          if [ -n "$CLUSTERS_JSON" ] && echo "$CLUSTERS_JSON" | jq -e '.source != "demo" and ((.clusters | length) > 0 or .source == "k8s" or .source == "mcp")' >/dev/null 2>&1; then
+          # Ensure actual cluster discovery is active and not silently passing on synthetic demo fixtures
+          if [ -n "$CLUSTERS_JSON" ] && echo "$CLUSTERS_JSON" | jq -e --argjson demo "$DEMO_CLUSTER_NAMES" "$CLUSTERS_FILTER" >/dev/null 2>&1; then
             echo "==> KubeStellar Console is healthy: /healthz status ok, / returned HTTP 200, and live cluster telemetry verified"
             break
           fi

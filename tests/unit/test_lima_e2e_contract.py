@@ -46,4 +46,10 @@ def test_e2e_browser_test_script_verifies_live_cluster_telemetry_and_rejects_dem
     assert "kind-local" in content
     assert "minikube" in content
     assert "No clusters connected" in content
-
+    # Demo fixtures must be re-scanned while async content loads, not once up front.
+    assert "assert_no_demo_fixtures" in content
+    # Static card headings render with empty data, so they must not gate the check.
+    assert "Node Status" not in content
+    assert "Top Pods" not in content
+    # WebDriver failures must be caught by type, not by matching message text.
+    assert "except WebDriverException" in content

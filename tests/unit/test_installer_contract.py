@@ -138,24 +138,44 @@ def test_installer_and_ddi_strip_vmlinux_and_static_archives() -> None:
     assert "find /layer -type f -name '*.a' -delete" in ddi_element
 
 
-def test_installer_smoke_probes_live_cluster_telemetry_and_rejects_demo_mode() -> None:
+def _smoke_recipe() -> str:
     justfile = JUSTFILE.read_text(encoding="utf-8")
     start = justfile.index("test-installer-artifact:")
     end = justfile.index("install-vm:", start)
-    recipe = justfile[start:end]
+    return justfile[start:end]
+
+
+def _smoke_gate_jq_filter() -> str:
+    match = re.search(r"CLUSTERS_FILTER='([^']+)'", _smoke_recipe())
+    assert match, "smoke recipe must define CLUSTERS_FILTER"
+    return match.group(1)
+
+
+def _smoke_gate_demo_names() -> str:
+    match = re.search(r"DEMO_CLUSTER_NAMES='([^']+)'", _smoke_recipe())
+    assert match, "smoke recipe must define DEMO_CLUSTER_NAMES"
+    return match.group(1)
+
+
+def test_installer_smoke_probes_live_cluster_telemetry_and_rejects_demo_mode() -> None:
+    recipe = _smoke_recipe()
 
     assert "/api/mcp/clusters" in recipe
     assert '.source != "demo"' in recipe
     assert "/healthz" in recipe
     assert "200" in recipe
+    # Demo fixtures are what the unauthenticated probe can actually observe,
+    # because the console only reports source "demo" for X-Demo-Mode requests.
+    assert "kind-local" in _smoke_gate_demo_names()
 
 
 def test_smoke_gate_jq_filter_accepts_live_telemetry_and_rejects_demo_mode() -> None:
-    filter_expr = '.source != "demo" and ((.clusters | length) > 0 or .source == "k8s" or .source == "mcp")'
+    filter_expr = _smoke_gate_jq_filter()
+    demo_names = _smoke_gate_demo_names()
 
     def eval_filter(payload: str) -> int:
         proc = subprocess.run(
-            ["jq", "-e", filter_expr],
+            ["jq", "-e", "--argjson", "demo", demo_names, filter_expr],
             input=payload,
             capture_output=True,
             text=True,
@@ -166,9 +186,25 @@ def test_smoke_gate_jq_filter_accepts_live_telemetry_and_rejects_demo_mode() -> 
     demo_payload = '{"clusters": [{"name": "kind-local"}], "source": "demo"}'
     assert eval_filter(demo_payload) != 0
 
+    # Synthetic demo fixtures served without the demo source must be rejected
+    demo_fixture_payload = '{"clusters": [{"name": "minikube"}], "source": "k8s"}'
+    assert eval_filter(demo_fixture_payload) != 0
+
+    # A single demo fixture alongside a live cluster must still be rejected
+    mixed_payload = '{"clusters": [{"name": "its1"}, {"name": "k3s-edge"}], "source": "mcp"}'
+    assert eval_filter(mixed_payload) != 0
+
     # Service unavailable / No cluster access must be rejected
     error_payload = '{"error": "No cluster access"}'
     assert eval_filter(error_payload) != 0
+
+    # Zero discovered clusters must be rejected: the console k8s fallback
+    # returns this shape before any cluster becomes reachable.
+    empty_k8s_payload = '{"clusters": [], "source": "k8s"}'
+    assert eval_filter(empty_k8s_payload) != 0
+
+    # A missing clusters key must be rejected too
+    assert eval_filter('{"source": "k8s"}') != 0
 
     # Live k8s cluster telemetry must be accepted
     k8s_payload = '{"clusters": [{"name": "in-cluster", "healthy": true}], "source": "k8s"}'
@@ -177,5 +213,3 @@ def test_smoke_gate_jq_filter_accepts_live_telemetry_and_rejects_demo_mode() -> 
     # Live mcp cluster telemetry must be accepted
     mcp_payload = '{"clusters": [{"name": "its1"}], "source": "mcp"}'
     assert eval_filter(mcp_payload) == 0
-
-

@@ -17,6 +17,7 @@ import urllib.request
 from typing import Any
 
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -72,6 +73,47 @@ def wait_for_http_ready(url: str, timeout: int, check_healthz: bool = True) -> b
     return False
 
 
+# Upstream synthetic demo fixtures injected by the console demo data
+# (pkg/api/handlers/demo_data.go GetDemoClusters).
+DEMO_CLUSTER_NAMES = (
+    "kind-local",
+    "minikube",
+    "k3s-edge",
+    "eks-prod-us-east-1",
+    "gke-staging",
+    "aks-dev-westeu",
+    "openshift-prod",
+    "oci-oke-phoenix",
+    "alibaba-ack-shanghai",
+    "do-nyc1-prod",
+    "rancher-mgmt",
+    "vllm-gpu-cluster",
+)
+
+# Selectors that only render once real cluster resources are returned. Static
+# dashboard card containers and their headings are deliberately excluded: they
+# render with empty data and would let the gate pass without any discovered
+# cluster.
+CLUSTER_RESOURCE_SELECTORS = (
+    "[data-testid='cluster-card']",
+    "[data-testid='node-row']",
+    "[data-testid='pod-row']",
+)
+
+# Live control-plane / in-cluster identifiers that never appear in demo data.
+LIVE_CLUSTER_TEXT_MARKERS = ("its1", "wds1", "in-cluster")
+
+
+def assert_no_demo_fixtures(driver: webdriver.Chrome) -> None:
+    """Fail if the rendered page contains upstream synthetic demo cluster fixtures."""
+    page_text = driver.find_element(By.TAG_NAME, "body").text
+    for demo_name in DEMO_CLUSTER_NAMES:
+        if demo_name in page_text:
+            raise AssertionError(
+                f"Detected synthetic demo cluster '{demo_name}' in console DOM; demo mode was not rejected!"
+            )
+
+
 def verify_live_cluster_resources(driver: webdriver.Chrome, timeout: int = 15) -> None:
     """Verify that actual Kubernetes cluster resources are discovered and rendered in the DOM,
     ensuring unconfigured demo placeholders or synthetic dev mode do not pass silently.
@@ -81,39 +123,21 @@ def verify_live_cluster_resources(driver: webdriver.Chrome, timeout: int = 15) -
     # 1. Reject synthetic demo mode flag in localStorage if explicitly active
     try:
         demo_mode_flag = driver.execute_script("return window.localStorage.getItem('kc-demo-mode')")
+    except WebDriverException as exc:
+        print(f"==> Warning: could not read kc-demo-mode from localStorage: {exc}")
+    else:
         if demo_mode_flag == "true":
             raise AssertionError("Console is running in synthetic demo mode (kc-demo-mode=true in localStorage)")
-    except Exception as e:
-        if "synthetic demo mode" in str(e):
-            raise
 
-    # 2. Reject synthetic demo cluster mock names in the page
-    # Upstream demo data injects synthetic clusters: "kind-local", "minikube", "k3s-edge", "eks-prod-us-east-1"
-    demo_clusters = ["kind-local", "minikube", "k3s-edge", "eks-prod-us-east-1"]
-    page_text = driver.find_element(By.TAG_NAME, "body").text
-    for demo_name in demo_clusters:
-        if demo_name in page_text:
-            raise AssertionError(f"Detected synthetic demo cluster '{demo_name}' in console DOM; demo mode was not rejected!")
-
-    # 3. Wait for real cluster resource elements, cards, or metrics in the DOM
-    cluster_resource_selectors = [
-        "[data-testid='cluster-card']",
-        "[data-testid='clusters-page']",
-        "[data-testid='card-cluster-health']",
-        "[data-testid='card-node-status']",
-        "[data-testid='card-resource-usage']",
-        "[data-testid='card-top-pods']",
-        "[data-testid='stat-block-healthy-count']",
-        "[data-testid='stat-block-total-nodes']",
-        "[data-testid='stat-block-total-pods']",
-        "[data-testid='node-row']",
-        "[data-testid='pod-row']",
-    ]
-
+    # 2. Wait for real cluster resource elements or live cluster identifiers,
+    #    re-checking for demo fixtures on every pass so late-rendered async
+    #    demo content cannot slip through a single early scan.
     start = time.time()
     found_resource = False
     while time.time() - start < timeout:
-        for selector in cluster_resource_selectors:
+        assert_no_demo_fixtures(driver)
+
+        for selector in CLUSTER_RESOURCE_SELECTORS:
             elements = driver.find_elements(By.CSS_SELECTOR, selector)
             if elements and any(el.is_displayed() for el in elements):
                 found_resource = True
@@ -123,8 +147,7 @@ def verify_live_cluster_resources(driver: webdriver.Chrome, timeout: int = 15) -
             break
 
         body_text = driver.find_element(By.TAG_NAME, "body").text
-        # Look for live cluster/controlplane identifiers or node/pod telemetry
-        if any(term in body_text for term in ["its1", "wds1", "in-cluster", "Node Status", "Cluster Health", "ControlPlane", "Top Pods"]):
+        if any(term in body_text for term in LIVE_CLUSTER_TEXT_MARKERS):
             if "No clusters connected" not in body_text:
                 found_resource = True
                 print("==> Discovered live cluster workload indicators in DOM text.")
@@ -137,6 +160,9 @@ def verify_live_cluster_resources(driver: webdriver.Chrome, timeout: int = 15) -
             "Timed out waiting for live Kubernetes cluster resources (nodes, pods, or initialized ControlPlanes) "
             "to be rendered in the DOM."
         )
+
+    # 3. Final demo scan after the async content settled.
+    assert_no_demo_fixtures(driver)
 
     print("==> Live cluster workload DOM rendering verified successfully!")
 
