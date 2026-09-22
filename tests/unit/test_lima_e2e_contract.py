@@ -48,8 +48,14 @@ def test_e2e_browser_test_script_verifies_live_cluster_telemetry_and_rejects_dem
     assert "No clusters connected" in content
     # Demo fixtures must be re-scanned while async content loads, not once up front.
     assert "assert_no_demo_fixtures" in content
-    # Static card headings render with empty data, so they must not gate the check.
-    assert "Node Status" not in content
-    assert "Top Pods" not in content
+    # Per-cluster DOM elements only exist on the cluster listing routes, which
+    # the script must navigate to explicitly.
+    assert "/clusters" in content
+    assert "cluster-row-" in content
+    assert "cluster-card" in content
+    # Cluster health is populated asynchronously after boot, so the render
+    # budget must be configurable rather than a short hardcoded wait.
+    assert "cluster-telemetry-timeout" in content
+    assert "CLUSTER_TELEMETRY_TIMEOUT" in content
     # WebDriver failures must be caught by type, not by matching message text.
     assert "except WebDriverException" in content

@@ -42,6 +42,16 @@ def parse_args() -> argparse.Namespace:
         default=60,
         help="Max timeout in seconds to wait for console readiness (default: 60)",
     )
+    parser.add_argument(
+        "--cluster-telemetry-timeout",
+        type=int,
+        default=CLUSTER_TELEMETRY_TIMEOUT,
+        help=(
+            "Max timeout in seconds to wait for live cluster resources to render "
+            f"(default: {CLUSTER_TELEMETRY_TIMEOUT}); upstream populates cluster health "
+            "asynchronously after boot"
+        ),
+    )
     return parser.parse_args()
 
 def wait_for_http_ready(url: str, timeout: int, check_healthz: bool = True) -> bool:
@@ -90,18 +100,32 @@ DEMO_CLUSTER_NAMES = (
     "vllm-gpu-cluster",
 )
 
-# Selectors that only render once real cluster resources are returned. Static
-# dashboard card containers and their headings are deliberately excluded: they
-# render with empty data and would let the gate pass without any discovered
-# cluster.
-CLUSTER_RESOURCE_SELECTORS = (
-    "[data-testid='cluster-card']",
-    "[data-testid='node-row']",
-    "[data-testid='pod-row']",
+# Console routes that render one DOM element per discovered cluster, paired
+# with the selector that only exists once a cluster was actually returned by
+# the API. Static card containers and their headings are deliberately excluded:
+# they render with empty data and would let the gate pass without any
+# discovered cluster.
+#   /clusters  -> ClusterGrid renders SortableClusterItem with
+#                 data-testid="cluster-row-${cluster.name}"
+#                 (web/src/components/clusters/components/ClusterDragReorder.tsx)
+#   /workloads -> Clusters Overview grid renders one
+#                 data-testid="cluster-card" per cluster
+#                 (web/src/components/workloads/Workloads.parts.tsx)
+# The dashboard landing page has no such per-cluster testid, so these pages
+# must be visited explicitly for the DOM verification to mean anything.
+CLUSTER_RESOURCE_PAGES = (
+    ("/clusters", "[data-testid^='cluster-row-']"),
+    ("/workloads", "[data-testid='cluster-card']"),
 )
 
 # Live control-plane / in-cluster identifiers that never appear in demo data.
 LIVE_CLUSTER_TEXT_MARKERS = ("its1", "wds1", "in-cluster")
+
+# Default budget for live cluster resources to render. Upstream ListClusters
+# returns clusters with HealthUnknown and fills health in asynchronously after
+# boot, so a short budget flakes on an otherwise healthy install. Override with
+# --cluster-telemetry-timeout.
+CLUSTER_TELEMETRY_TIMEOUT = 120
 
 
 def assert_no_demo_fixtures(driver: webdriver.Chrome) -> None:
@@ -114,7 +138,11 @@ def assert_no_demo_fixtures(driver: webdriver.Chrome) -> None:
             )
 
 
-def verify_live_cluster_resources(driver: webdriver.Chrome, timeout: int = 15) -> None:
+def verify_live_cluster_resources(
+    driver: webdriver.Chrome,
+    console_url: str,
+    timeout: int = CLUSTER_TELEMETRY_TIMEOUT,
+) -> None:
     """Verify that actual Kubernetes cluster resources are discovered and rendered in the DOM,
     ensuring unconfigured demo placeholders or synthetic dev mode do not pass silently.
     """
@@ -129,36 +157,41 @@ def verify_live_cluster_resources(driver: webdriver.Chrome, timeout: int = 15) -
         if demo_mode_flag == "true":
             raise AssertionError("Console is running in synthetic demo mode (kc-demo-mode=true in localStorage)")
 
-    # 2. Wait for real cluster resource elements or live cluster identifiers,
-    #    re-checking for demo fixtures on every pass so late-rendered async
-    #    demo content cannot slip through a single early scan.
+    # 2. Visit each cluster-listing route and wait for a real per-cluster
+    #    element (or live cluster identifiers), re-checking for demo fixtures on
+    #    every pass so late-rendered async demo content cannot slip through a
+    #    single early scan.
+    base_url = console_url.rstrip("/")
     start = time.time()
     found_resource = False
-    while time.time() - start < timeout:
-        assert_no_demo_fixtures(driver)
+    while not found_resource and time.time() - start < timeout:
+        for route, selector in CLUSTER_RESOURCE_PAGES:
+            driver.get(f"{base_url}{route}")
+            WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
-        for selector in CLUSTER_RESOURCE_SELECTORS:
+            assert_no_demo_fixtures(driver)
+
             elements = driver.find_elements(By.CSS_SELECTOR, selector)
             if elements and any(el.is_displayed() for el in elements):
                 found_resource = True
-                print(f"==> Found live cluster resource element: {selector}")
-                break
-        if found_resource:
-            break
-
-        body_text = driver.find_element(By.TAG_NAME, "body").text
-        if any(term in body_text for term in LIVE_CLUSTER_TEXT_MARKERS):
-            if "No clusters connected" not in body_text:
-                found_resource = True
-                print("==> Discovered live cluster workload indicators in DOM text.")
+                print(f"==> Found live cluster resource element on {route}: {selector}")
                 break
 
-        time.sleep(1)
+            body_text = driver.find_element(By.TAG_NAME, "body").text
+            if any(term in body_text for term in LIVE_CLUSTER_TEXT_MARKERS):
+                if "No clusters connected" not in body_text:
+                    found_resource = True
+                    print(f"==> Discovered live cluster workload indicators in {route} DOM text.")
+                    break
+
+        if not found_resource:
+            time.sleep(2)
 
     if not found_resource:
         raise AssertionError(
-            "Timed out waiting for live Kubernetes cluster resources (nodes, pods, or initialized ControlPlanes) "
-            "to be rendered in the DOM."
+            f"Timed out after {timeout}s waiting for live Kubernetes cluster resources "
+            f"(per-cluster rows or cards on {', '.join(route for route, _ in CLUSTER_RESOURCE_PAGES)}, "
+            "or initialized ControlPlanes) to be rendered in the DOM."
         )
 
     # 3. Final demo scan after the async content settled.
@@ -167,7 +200,11 @@ def verify_live_cluster_resources(driver: webdriver.Chrome, timeout: int = 15) -
     print("==> Live cluster workload DOM rendering verified successfully!")
 
 
-def run_browser_verification(console_url: str, agent_url: str) -> None:
+def run_browser_verification(
+    console_url: str,
+    agent_url: str,
+    cluster_telemetry_timeout: int = CLUSTER_TELEMETRY_TIMEOUT,
+) -> None:
     chrome_opts = Options()
     chrome_opts.add_argument("--headless=new")
     chrome_opts.add_argument("--no-sandbox")
@@ -225,9 +262,12 @@ def run_browser_verification(console_url: str, agent_url: str) -> None:
         print(f"==> Successfully verified console UI! Page title: {driver.title}")
 
         # 3. Verify actual Kubernetes cluster resources are rendered (rejecting demo mode)
-        verify_live_cluster_resources(driver, timeout=15)
+        verify_live_cluster_resources(driver, console_url, timeout=cluster_telemetry_timeout)
 
-        # 4. Check kiosk gate behavior
+        # 4. Check kiosk gate behavior on the landing page again, since the
+        #    cluster verification navigated away to the cluster listing routes.
+        driver.get(console_url)
+        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         gate_elements = driver.find_elements(By.ID, "kubestellar-kiosk-gate")
         agent_healthy = False
         try:
@@ -256,7 +296,11 @@ def main() -> None:
         print(f"ERROR: Timed out waiting for console at {args.console_url}", file=sys.stderr)
         sys.exit(1)
 
-    run_browser_verification(args.console_url, args.agent_url)
+    run_browser_verification(
+        args.console_url,
+        args.agent_url,
+        cluster_telemetry_timeout=args.cluster_telemetry_timeout,
+    )
 
 
 if __name__ == "__main__":

@@ -169,6 +169,17 @@ def test_installer_smoke_probes_live_cluster_telemetry_and_rejects_demo_mode() -
     assert "kind-local" in _smoke_gate_demo_names()
 
 
+def test_smoke_gate_timeout_reports_which_stage_blocked() -> None:
+    recipe = _smoke_recipe()
+
+    # A timeout must name the stage that never passed so CI triage does not
+    # have to guess between healthz, root and cluster telemetry.
+    assert "LAST_STAGE" in recipe
+    assert "/healthz never reported status ok" in recipe
+    assert "never returned HTTP 200" in recipe
+    assert "never reported live (non-demo, non-empty) cluster telemetry" in recipe
+
+
 def test_smoke_gate_jq_filter_accepts_live_telemetry_and_rejects_demo_mode() -> None:
     filter_expr = _smoke_gate_jq_filter()
     demo_names = _smoke_gate_demo_names()

@@ -348,6 +348,11 @@ test-installer-artifact:
     # before any cluster is reachable.
     CLUSTERS_FILTER='.source != "demo" and (.source == "k8s" or .source == "mcp") and ((.clusters // []) | length) > 0 and (any(.clusters[]?.name; . as $name | $demo | index($name) != null) | not)'
 
+    # Tracks the furthest readiness stage reached so a timeout reports which
+    # probe actually blocked the gate instead of a generic readiness failure.
+    LAST_STAGE="healthz"
+    LAST_CLUSTERS_JSON=""
+
     echo "==> Polling KubeStellar Console readiness at http://127.0.0.1:8080 (deadline: ${DEADLINE_SECS}s)..."
 
     while true; do
@@ -362,9 +367,12 @@ test-installer-artifact:
 
       HEALTHZ_JSON=$(curl --silent --fail --max-time 2 http://127.0.0.1:8080/healthz 2>/dev/null || true)
       if [ -n "$HEALTHZ_JSON" ] && echo "$HEALTHZ_JSON" | jq -e '.status == "ok"' >/dev/null 2>&1; then
+        LAST_STAGE="root"
         ROOT_CODE=$(curl --silent --fail --max-time 2 --output /dev/null --write-out "%{http_code}" http://127.0.0.1:8080/ 2>/dev/null || true)
         if [ "$ROOT_CODE" = "200" ]; then
+          LAST_STAGE="clusters"
           CLUSTERS_JSON=$(curl --silent --fail --max-time 2 http://127.0.0.1:8080/api/mcp/clusters 2>/dev/null || true)
+          LAST_CLUSTERS_JSON="$CLUSTERS_JSON"
           # Ensure actual cluster discovery is active and not silently passing on synthetic demo fixtures
           if [ -n "$CLUSTERS_JSON" ] && echo "$CLUSTERS_JSON" | jq -e --argjson demo "$DEMO_CLUSTER_NAMES" "$CLUSTERS_FILTER" >/dev/null 2>&1; then
             echo "==> KubeStellar Console is healthy: /healthz status ok, / returned HTTP 200, and live cluster telemetry verified"
@@ -376,7 +384,18 @@ test-installer-artifact:
       NOW=$(date +%s)
       ELAPSED=$((NOW - START_TIME))
       if [ "$ELAPSED" -ge "$DEADLINE_SECS" ]; then
-        echo "ERROR: Timed out after ${DEADLINE_SECS}s waiting for KubeStellar Console readiness!" >&2
+        case "$LAST_STAGE" in
+          healthz)
+            echo "ERROR: Timed out after ${DEADLINE_SECS}s waiting for KubeStellar Console readiness: /healthz never reported status ok!" >&2
+            ;;
+          root)
+            echo "ERROR: Timed out after ${DEADLINE_SECS}s waiting for KubeStellar Console readiness: /healthz was ok but / never returned HTTP 200!" >&2
+            ;;
+          clusters)
+            echo "ERROR: Timed out after ${DEADLINE_SECS}s waiting for KubeStellar Console readiness: /healthz and / passed but /api/mcp/clusters never reported live (non-demo, non-empty) cluster telemetry!" >&2
+            echo "==> Last /api/mcp/clusters payload: ${LAST_CLUSTERS_JSON:-<empty>}" >&2
+            ;;
+        esac
         if [ -f "$SERIAL_LOG" ]; then
           echo "==> Serial log tail (last 100 lines):" >&2
           tail -n 100 "$SERIAL_LOG" >&2
