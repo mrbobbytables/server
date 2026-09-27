@@ -4,7 +4,7 @@ description: Operator runbook for the k0s systemd-sysext extension — provision
 metadata:
   type: how-to
   status: stable
-  last_updated: "2026-09-18"
+  last_updated: "2026-09-26"
   context7-sources:
     - /systemd/systemd
 ---
@@ -52,6 +52,8 @@ On Bluefin Server hosts running k0s:
 
 - **Kubernetes clusters**: `systemd-sysupdate.service` touches `/run/reboot-required` after staging updates. When k0s (`k0scontroller.service`) is active, `systemd-sysupdate-reboot.service` detects the active service via `ExecCondition` and skips uncoordinated local reboots, allowing Kured to cordon, drain, and reboot nodes safely. Note that k0s hosts must deploy Kured (or an equivalent cluster reboot coordinator); if Kured is not deployed on a single-node k0s host, uncoordinated local reboots remain inhibited while k0s services run, requiring manual reboot or manual coordination. Because the `ExecCondition` is evaluated at the instant the maintenance timer fires, nodes undergoing planned cluster maintenance or service restarts should set `/run/reboot-lock` to guarantee inhibition across transient unit state transitions.
 - **Single-node / non-Kubernetes hosts**: When k0s is not running, `systemd-sysupdate-reboot.timer` schedules automatic reboots during the maintenance window (04:10 with randomized delay). Reboots can be temporarily inhibited by creating `/run/reboot-lock` or persistently inhibited with `/etc/reboot-lock`.
+- **Default appliance install**: The appliance runs k0s by default and ships no Kured in its manifests. With k0s active, `systemd-sysupdate-reboot.service` therefore stands down on every timer run, so a staged update is not applied until an operator reboots the host manually or deploys Kured.
+- **Timer enablement**: Flatcar's `/usr` enables `systemd-sysupdate-reboot.timer` through its own `timers.target.wants` symlink, so no preset is needed; the `reboot-coordination.conf` drop-in is what adds the Kubernetes and lock-file gate.
 
 ## Troubleshooting
 

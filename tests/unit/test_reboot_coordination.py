@@ -14,7 +14,6 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SYSTEMD_SYSTEM_DIR = REPO_ROOT / "files" / "os" / "systemd" / "system"
-SYSTEMD_PRESET_DIR = REPO_ROOT / "files" / "os" / "systemd" / "system-preset"
 SYSUPDATE_DROPIN_DIR = (
     REPO_ROOT / "files" / "os" / "systemd" / "systemd-sysupdate.service.d"
 )
@@ -24,7 +23,6 @@ REBOOT_DROPIN_DIR = (
 ELEMENTS_DIR = REPO_ROOT / "elements" / "bluefin-server"
 
 REBOOT_DROPIN = REBOOT_DROPIN_DIR / "reboot-coordination.conf"
-REBOOT_PRESET = SYSTEMD_PRESET_DIR / "80-enable-sysupdate-reboot.preset"
 REBOOT_ELEMENT = ELEMENTS_DIR / "os-sysupdate-reboot.bst"
 OS_STACK = ELEMENTS_DIR / "os-stack.bst"
 KURED_HOOK = SYSUPDATE_DROPIN_DIR / "kured-hook.conf"
@@ -39,23 +37,23 @@ def load_ini(path: Path) -> configparser.ConfigParser:
 
 def test_reboot_coordination_files_exist():
     assert REBOOT_DROPIN.is_file(), "reboot-coordination.conf drop-in is missing"
-    assert REBOOT_PRESET.is_file(), "80-enable-sysupdate-reboot.preset is missing"
     assert REBOOT_ELEMENT.is_file(), "os-sysupdate-reboot.bst element is missing"
 
 
 def test_no_upstream_unit_collision():
-    # systemd-sysupdate-reboot.service and .timer are shipped by upstream systemd
-    # in freedesktop-sdk.bst:components/systemd.bst (/usr/lib/systemd/system/).
-    # Shipping full unit files in files/os/systemd/system collides with upstream.
+    # systemd-sysupdate-reboot.service and .timer ship in Flatcar's /usr
+    # (/usr/lib/systemd/system/), which also enables the timer through its own
+    # timers.target.wants symlink. Shipping full unit files in
+    # files/os/systemd/system would collide with those upstream units.
     service_file = SYSTEMD_SYSTEM_DIR / "systemd-sysupdate-reboot.service"
     timer_file = SYSTEMD_SYSTEM_DIR / "systemd-sysupdate-reboot.timer"
     assert not service_file.exists(), (
         "systemd-sysupdate-reboot.service must not exist in files/os/systemd/system "
-        "to avoid colliding with upstream systemd.bst units"
+        "to avoid colliding with the unit Flatcar ships in /usr"
     )
     assert not timer_file.exists(), (
         "systemd-sysupdate-reboot.timer must not exist in files/os/systemd/system "
-        "to avoid colliding with upstream systemd.bst units"
+        "to avoid colliding with the unit Flatcar ships in /usr"
     )
 
 
@@ -80,17 +78,6 @@ def test_reboot_dropin_contract():
     assert "systemctl is-active" in exec_condition
     assert "k0scontroller.service" in exec_condition
     assert "kubelet.service" in exec_condition
-
-
-def test_reboot_preset_enables_timer():
-    content = REBOOT_PRESET.read_text()
-    assert "enable systemd-sysupdate-reboot.timer" in content
-    # systemd preset files are evaluated in lexicographic filename order across
-    # directories, earliest match wins. freedesktop-sdk ships 90-sysupdate.preset
-    # which disables the timer; our preset must sort before 90-sysupdate.preset.
-    assert REBOOT_PRESET.name < "90-sysupdate.preset", (
-        f"{REBOOT_PRESET.name} must sort before 90-sysupdate.preset to override FSDK's disable"
-    )
 
 
 def test_exec_condition_kubernetes_interlock_logic(tmp_path):
