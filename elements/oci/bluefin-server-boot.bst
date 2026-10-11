@@ -109,7 +109,7 @@ variables:
     systemd.verity_usr_data=/dev/disk/by-partlabel/bluefin-installer-usr
     systemd.verity_usr_hash=/dev/disk/by-partlabel/bluefin-installer-usr-verity
     rd.systemd.mask=systemd-repart.service systemd.mask=systemd-repart.service
-    rd.systemd.mask=systemd-networkd-wait-online.service
+    rd.systemd.mask=systemd-networkd-wait-online.service systemd.mask=systemd-networkd-wait-online.service
     systemd.mask=boot.automount systemd.mask=boot.mount
     systemd.unit=system-install.target
     systemd.setenv=BLUEFIN_INSTALL_KERNEL=/run/bluefin/installer/bluefin/bluefin-server-%{image-version}.efi
