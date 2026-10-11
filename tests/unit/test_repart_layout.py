@@ -23,6 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 REPART_DIR = REPO_ROOT / "files" / "os" / "repart.d"
 SYSUPDATE_DIR = REPO_ROOT / "files" / "os" / "sysupdate.d"
 BOOT_ELEMENT = REPO_ROOT / "elements" / "oci" / "bluefin-server-boot.bst"
+IMAGE_ELEMENT = REPO_ROOT / "elements" / "oci" / "bluefin-server-image.bst"
 
 EXPECTED = {
     "10-esp.conf": "esp",
@@ -107,3 +108,10 @@ def test_netboot_does_not_automount_the_in_ram_esp():
     netboot = netboot.split("disk-cmdline:")[0]
     assert "systemd.mask=boot.automount" in netboot
     assert "systemd.mask=boot.mount" in netboot
+
+
+def test_image_element_pins_ddi_esp_repart_to_loop_ref_partitions():
+    text = IMAGE_ELEMENT.read_text(encoding="utf-8")
+    assert "CopyBlocks=/dev/disk/by-loop-ref/rootdisk.raw-part1" in text
+    assert "CopyBlocks=/dev/disk/by-loop-ref/rootdisk.raw-part2" in text
+
