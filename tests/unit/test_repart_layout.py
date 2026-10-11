@@ -114,4 +114,11 @@ def test_image_element_pins_ddi_esp_repart_to_loop_ref_partitions():
     text = IMAGE_ELEMENT.read_text(encoding="utf-8")
     assert "CopyBlocks=/dev/disk/by-loop-ref/rootdisk.raw-part1" in text
     assert "CopyBlocks=/dev/disk/by-loop-ref/rootdisk.raw-part2" in text
+    assert "grep -q '^CopyBlocks=/dev/disk/by-loop-ref/rootdisk.raw-part1$' \"${esp}/bluefin/repart.d/20-usr-a.conf\"" in text
+    assert "grep -q '^CopyBlocks=/dev/disk/by-loop-ref/rootdisk.raw-part2$' \"${esp}/bluefin/repart.d/21-usr-verity-a.conf\"" in text
+
+
+def test_slot_a_source_definitions_use_copyblocks_auto():
+    assert load(REPART_DIR / "20-usr-a.conf")["CopyBlocks"] == "auto"
+    assert load(REPART_DIR / "21-usr-verity-a.conf")["CopyBlocks"] == "auto"
 
