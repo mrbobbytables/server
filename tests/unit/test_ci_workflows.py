@@ -108,6 +108,21 @@ def test_ci_requirements_are_exact_pins() -> None:
 
 
 
+
+def test_python_version_and_pyproject_declare_python_floor() -> None:
+    # Issue #385: Python version floor declared via .python-version and pyproject.toml
+    version = (ROOT / ".python-version").read_text(encoding="utf-8").strip()
+    assert version == "3.14", f"unexpected .python-version: {version}"
+
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib  # type: ignore[no-redef]
+
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    project = pyproject.get("project", {})
+    assert project.get("requires-python") == ">=3.14"
+
 def js_regex(pattern: str) -> re.Pattern[str]:
     """A Renovate (JavaScript) regex as a Python one: (?<name> -> (?P<name>."""
     if pattern.startswith("/") and pattern.endswith("/"):

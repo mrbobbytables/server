@@ -1,0 +1,7 @@
+[project]
+name = "bluefin-server"
+version = "0.1.0"
+description = "Bluefin Server automation and build tooling"
+requires-python = ">=3.14"
+readme = "README.md"
+license = "Apache-2.0"
