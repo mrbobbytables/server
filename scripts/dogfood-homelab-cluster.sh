@@ -207,7 +207,7 @@ boot() {
 }
 
 echo "==> control plane, node and wrong-passphrase node on one L2 segment (logs: ${state}/{cp,node,bad}.log)"
-boot cp "${base_port}" "${DOGFOOD_CP_MEM:-6144}" 3600 "${cp_net}" "${cp_conf}" & cp_pid=$!
+boot cp "${base_port}" "${DOGFOOD_CP_MEM:-6144}" 4200 "${cp_net}" "${cp_conf}" & cp_pid=$!
 sleep "${DOGFOOD_NODE_DELAY:-10}"
 boot node "$((base_port + 1))" "${DOGFOOD_NODE_MEM:-4096}" 3300 "${node_net}" \
     "$(printf 'HOMELAB_ROLE=node\nHOMELAB_JOIN_PASSPHRASE=%s\n' "${pass}")" & node_pid=$!
