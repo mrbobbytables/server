@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "bluefin-server"
 version = "0.1.0"
@@ -5,3 +9,6 @@ description = "Bluefin Server automation and build tooling"
 requires-python = ">=3.14"
 readme = "README.md"
 license = "Apache-2.0"
+
+[tool.setuptools]
+packages = []
