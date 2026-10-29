@@ -108,16 +108,16 @@ def test_ci_requirements_are_exact_pins() -> None:
         assert re.fullmatch(r"[A-Za-z0-9._-]+==[0-9][0-9A-Za-z.+!-]*", line), line
 
 
-
-
-def test_python_version_and_pyproject_declare_python_floor() -> None:
-    # Issue #385: Python version floor declared via .python-version and pyproject.toml
+def test_python_version_and_tool_configs_declare_python_floor() -> None:
     version = (ROOT / ".python-version").read_text(encoding="utf-8").strip()
     assert version == "3.14", f"unexpected .python-version: {version}"
 
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     project = pyproject.get("project", {})
     assert project.get("requires-python") == ">=3.14"
+    ruff = tomllib.loads((ROOT / "ruff.toml").read_text(encoding="utf-8"))
+    assert ruff.get("target-version") == "py314"
+
 
 def js_regex(pattern: str) -> re.Pattern[str]:
     """A Renovate (JavaScript) regex as a Python one: (?<name> -> (?P<name>."""
