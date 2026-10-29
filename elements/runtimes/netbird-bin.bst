@@ -17,6 +17,7 @@ sources:
   url: github:netbirdio/netbird/releases/download/v%{netbird-version}/netbird_%{netbird-version}_linux_amd64.tar.gz
   ref: "%{netbird-x86-64-sha256}"
   directory: dist
+  base-dir: ""
 
 (?):
 - arch == "aarch64":
@@ -25,6 +26,7 @@ sources:
       url: github:netbirdio/netbird/releases/download/v%{netbird-version}/netbird_%{netbird-version}_linux_arm64.tar.gz
       ref: "%{netbird-arm64-sha256}"
       directory: dist
+      base-dir: ""
 
 config:
   install-commands:
